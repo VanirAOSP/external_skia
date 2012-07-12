@@ -1872,8 +1872,15 @@ SkBlitRow::Proc SkBlitRow::PlatformProcs565(unsigned flags) {
     return platform_565_procs[flags];
 }
 
+extern SkBlitRow::Proc32 skia_androidopt_PlatformProcs32(unsigned flags) __attribute__((weak));
+
 SkBlitRow::Proc32 SkBlitRow::PlatformProcs32(unsigned flags) {
-    return platform_32_procs[flags];
+    if (skia_androidopt_PlatformProcs32) {
+        return skia_androidopt_PlatformProcs32(flags);
+    }
+    else {
+        return platform_32_procs[flags];
+    }
 }
 
 SkBlitRow::ColorProc SkBlitRow::PlatformColorProc() {

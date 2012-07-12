@@ -128,9 +128,12 @@ class SkARGB32_Shader_Blitter : public SkShaderBlitter {
 public:
     SkARGB32_Shader_Blitter(const SkBitmap& device, const SkPaint& paint);
     virtual ~SkARGB32_Shader_Blitter();
-    virtual void blitH(int x, int y, int width);
+
+    virtual void blitH(int x, int y, int width); /* Blit a single row */
+    virtual int  blitMultiH(int x, int y, int width, int height) __attribute__((weak)); /* Blit multiple rows */
     virtual void blitAntiH(int x, int y, const SkAlpha antialias[], const int16_t runs[]);
     virtual void blitMask(const SkMask&, const SkIRect&);
+    virtual void blitRect(int x, int y, int width, int height);
 
 private:
     SkXfermode*         fXfermode;
