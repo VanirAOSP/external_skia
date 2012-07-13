@@ -17,6 +17,7 @@ class SkPicturePlayback;
 class SkPictureRecord;
 class SkStream;
 class SkWStream;
+class SkAltCanvas;
 
 /** \class SkPicture
 
@@ -36,12 +37,12 @@ public:
     SkPicture(const SkPicture& src);
     explicit SkPicture(SkStream*);
     virtual ~SkPicture();
-    
+
     /**
      *  Swap the contents of the two pictures. Guaranteed to succeed.
      */
     void swap(SkPicture& other);
-    
+
     enum RecordingFlags {
         /*  This flag specifies that when clipPath() is called, the path will
             be faithfully recorded, but the recording canvas' current clip will
@@ -74,13 +75,13 @@ public:
         is drawn.
     */
     void endRecording();
-    
+
     /** Replays the drawing commands on the specified canvas. This internally
         calls endRecording() if that has not already been called.
         @param surface the canvas receiving the drawing commands.
     */
     void draw(SkCanvas* surface);
-    
+
     /** Return the width of the picture's recording canvas. This
         value reflects what was passed to setSize(), and does not necessarily
         reflect the bounds of what has been recorded into the picture.
@@ -99,10 +100,13 @@ public:
 
     /** Signals that the caller is prematurely done replaying the drawing
         commands. This can be called from a canvas virtual while the picture
-        is drawing. Has no effect if the picture is not drawing. 
+        is drawing. Has no effect if the picture is not drawing.
     */
     void abortPlayback();
-    
+
+    bool canUseGpuRendering();
+    void drawAltCanvas(SkAltCanvas* surface);
+
 private:
     int fWidth, fHeight;
     SkPictureRecord* fRecord;
@@ -122,11 +126,11 @@ public:
     ~SkAutoPictureRecord() {
         fPicture->endRecording();
     }
-    
+
     /** Return the canvas to draw into for recording into the picture.
     */
     SkCanvas* getRecordingCanvas() const { return fCanvas; }
-    
+
 private:
     SkPicture*  fPicture;
     SkCanvas*   fCanvas;
