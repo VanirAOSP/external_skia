@@ -249,6 +249,8 @@ void SkPicture::abortPlayback() {
 
 bool SkPicture::canUseGpuRendering(){
     if(NULL == fRecord){
+        if(NULL != fPlayback)
+            return fPlayback->canUseGpuRendering();
         return false;
     }
 
