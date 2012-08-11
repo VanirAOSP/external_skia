@@ -66,8 +66,8 @@ endif
 # S32A_Blend_Blitrow32. Overrides the intrinsic blitter below.
 LOCAL_CFLAGS += -DENABLE_OPTIMIZED_S32A_BLITTERS
 
-# Enable Neon assembler optimized version of S32A_Opaque_BlitRow32.
-# Overrides the intrinsic blitter below.
+# Enable Neon assembler optimized version of S32A_Opaque_BlitRow32 and
+# S32A_Blend_Blitrow32. Overrides the intrinsic blitter below.
 LOCAL_CFLAGS += -DENABLE_OPTIMIZED_S32A_BLITTERS
 
 # special checks for alpha == 0 and alpha == 255 in S32A_Opaque_BlitRow32
