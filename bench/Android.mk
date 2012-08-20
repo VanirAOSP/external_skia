@@ -104,4 +104,6 @@ LOCAL_MODULE_TAGS := optional
 #include stlport headers
 include external/stlport/libstlport.mk
 
+LOCAL_CFLAGS := -fno-strict-aliasing
+
 include $(BUILD_EXECUTABLE)
