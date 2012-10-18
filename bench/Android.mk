@@ -58,4 +58,10 @@ LOCAL_MODULE := skia_bench
 
 LOCAL_MODULE_TAGS := optional
 
+# use this for now to reduce skia warnings
+# under strict aliasing these are much worse than -fno-strict warnings.
+# and performance is not pertinent here anyways
+
+LOCAL_CFLAGS := -fno-strict-aliasing
+
 include $(BUILD_EXECUTABLE)
