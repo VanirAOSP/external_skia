@@ -42,6 +42,17 @@ LOCAL_C_INCLUDES := \
     external/skia/src/gpu
 
 #LOCAL_CFLAGS := 
+ifeq ($(ARCH_ARM_HAVE_VFP),true)
+	LOCAL_CFLAGS += -DANDROID_LARGE_MEMORY_DEVICE
+endif
+
+ifneq ($(ARCH_ARM_HAVE_VFP),true)
+		LOCAL_CFLAGS += -DSK_SOFTWARE_FLOAT
+endif
+
+ifeq ($(ARCH_ARM_HAVE_NEON),true)
+		LOCAL_CFLAGS += -D__ARM_HAVE_NEON
+endif
 
 LOCAL_MODULE := skia_bench
 
