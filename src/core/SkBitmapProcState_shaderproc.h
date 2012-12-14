@@ -10,7 +10,7 @@
 
 #define SCALE_FILTER_NAME       MAKENAME(_filter_DX_shaderproc)
 
-static void SCALE_FILTER_NAME(const SkBitmapProcState& s, int x, int y,
+static int SCALE_FILTER_NAME(const SkBitmapProcState& s, int x, int y,
                               DSTTYPE* SK_RESTRICT colors, int count) {
     SkASSERT((s.fInvType & ~(SkMatrix::kTranslate_Mask |
                              SkMatrix::kScale_Mask)) == 0);
@@ -174,6 +174,8 @@ static void SCALE_FILTER_NAME(const SkBitmapProcState& s, int x, int y,
 #ifdef POSTAMBLE
     POSTAMBLE(s);
 #endif
+
+    return 1; /* processed one row with shader */
 }
 
 ///////////////////////////////////////////////////////////////////////////////

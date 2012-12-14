@@ -567,6 +567,12 @@ bool SkBitmapProcState::chooseProcs(const SkMatrix& inv, const SkPaint& paint) {
     return true;
 }
 
+void SkBitmapProcState::beginRect(int x, int y, int width, int height) {
+}
+
+void SkBitmapProcState::endRect() {
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 /*
     The storage requirements for the different matrix procs are as follows,

@@ -41,6 +41,12 @@ void SkShader::endSession() {
     SkDEBUGCODE(fInSession = false;)
 }
 
+void SkShader::beginRect(int x, int y, int width, int height) {
+}
+
+void SkShader::endRect() {
+}
+
 void SkShader::flatten(SkFlattenableWriteBuffer& buffer) {
     this->INHERITED::flatten(buffer);
     buffer.writeBool(fLocalMatrix != NULL);

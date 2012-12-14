@@ -22,6 +22,7 @@ public:
     virtual bool setContext(const SkBitmap&, const SkPaint&, const SkMatrix&);
     virtual uint32_t getFlags() { return fFlags; }
     virtual void shadeSpan(int x, int y, SkPMColor dstC[], int count);
+    virtual int  shadeSpanMulti(int x, int y, SkPMColor dstC[], int count, int height) __attribute__((weak));
     virtual void shadeSpan16(int x, int y, uint16_t dstC[], int count);
     virtual void beginSession();
     virtual void endSession();
@@ -34,10 +35,17 @@ public:
         return SkNEW_ARGS(SkBitmapProcShader, (buffer));
     }
 
+    // override beginRect and endRect
+    virtual void beginRect(int x, int y, int width, int height);
+    virtual void endRect();
+
     // override from flattenable
     virtual bool toDumpString(SkString* str) const;
 
     SK_DECLARE_FLATTENABLE_REGISTRAR()
+
+    virtual SkShaderIds getID() { return kSkBitmapProcShader_Class; }
+
 protected:
     SkBitmapProcShader(SkFlattenableReadBuffer& );
     virtual void flatten(SkFlattenableWriteBuffer& );

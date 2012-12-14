@@ -298,6 +298,32 @@ void SkARGB32_Shader_Blitter::blitH(int x, int y, int width) {
     }
 }
 
+extern int skia_androidopt_blitRect(int x, int y, int width, int height,
+        SkARGB32_Shader_Blitter *sk, const SkBitmap& fDevice, SkXfermode *fXfermode,
+        SkShader* fShader) __attribute__((weak));
+void SkARGB32_Shader_Blitter::blitRect(int x, int y, int width, int height)
+{
+    SkShader*   shader = fShader;
+    SkXfermode* xfer = fXfermode;
+
+    if (skia_androidopt_blitRect) {
+        if (skia_androidopt_blitRect(x, y, width, height, this, fDevice, xfer, shader)) {
+            return;
+        }
+    }
+
+    while (--height >= 0)
+        this->blitH(x, y++, width);
+}
+
+
+int SkARGB32_Shader_Blitter::blitMultiH(int x, int y, int width, int height) {
+    SkDebugf("WEAK SkARGB32_Shader_Blitter::blitMultiH");
+    return 0;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////
+
 void SkARGB32_Shader_Blitter::blitAntiH(int x, int y, const SkAlpha antialias[],
                                         const int16_t runs[]) {
     SkPMColor*  span = fBuffer;
