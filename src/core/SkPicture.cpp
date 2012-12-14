@@ -22,8 +22,10 @@
 
 #include "SkReader32.h"
 #include "SkWriter32.h"
+#include "SkAltCanvas.h"
 
 #define DUMP_BUFFER_SIZE 65536
+extern bool SkAltRecordingDataPerfCanvas() __attribute__((weak));
 
 //#define ENABLE_TIME_DRAW    // dumps milliseconds for each draw
 
@@ -185,6 +187,13 @@ void SkPicture::draw(SkCanvas* surface) {
     }
 }
 
+void SkPicture::drawAltCanvas(SkAltCanvas* surface) {
+    this->endRecording();
+    if(fPlayback){
+        fPlayback->drawAltCanvas(*surface);
+    }
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 
 #include "SkStream.h"
@@ -238,4 +247,13 @@ void SkPicture::abortPlayback() {
     fPlayback->abort();
 }
 
+bool SkPicture::canUseGpuRendering(){
+    if(NULL == fRecord){
+        return false;
+    }
 
+    if(SkAltRecordingDataPerfCanvas)
+        return fRecord->fData.canUseGpuRendering();
+    else
+        return false;
+}

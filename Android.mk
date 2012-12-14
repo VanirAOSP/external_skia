@@ -234,6 +234,9 @@ LOCAL_SRC_FILES:= \
 	src/ports/SkThread_pthread.cpp \
 	src/ports/SkTime_Unix.cpp \
 	src/utils/SkBase64.cpp \
+	src/core/SkAltCanvas.cpp \
+	src/core/SkRecordingData.cpp \
+	src/core/SkAltRecordingData.cpp \
 	src/utils/SkBoundaryPatch.cpp \
 	src/utils/SkCamera.cpp \
 	src/utils/SkColorMatrix.cpp \
