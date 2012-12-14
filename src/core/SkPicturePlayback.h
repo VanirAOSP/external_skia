@@ -47,6 +47,8 @@ public:
     // drawing and return from draw() after the "current" op code is done
     void abort();
 
+    bool canUseGpuRendering()   {   return fCanUseGpuRendering; }
+
 private:
 
     class TextContainer {
@@ -178,6 +180,7 @@ private:
 #ifdef SK_BUILD_FOR_ANDROID
     SkMutex fDrawMutex;
 #endif
+    bool fCanUseGpuRendering;
 };
 
 #endif
