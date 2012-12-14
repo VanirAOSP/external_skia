@@ -433,9 +433,6 @@ LOCAL_SRC_FILES += \
   
 LOCAL_STATIC_LIBRARIES := libskiatess
 
-ifeq ($(BOARD_USES_QCOM_HARDWARE),true)
-	LOCAL_WHOLE_STATIC_LIBRARIES += libqc-skia
-endif
 
 LOCAL_SHARED_LIBRARIES := \
   libcutils \
