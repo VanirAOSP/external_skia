@@ -1,6 +1,6 @@
 /*
  * Copyright 2006, The Android Open Source Project
- * Copyright (c) 2009, Code Aurora Forum.
+ * Copyright (c) 2009, The Linux Foundation.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
