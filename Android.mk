@@ -50,7 +50,8 @@ ifneq ($(ARCH_ARM_HAVE_VFP),true)
 endif
 
 ifeq ($(ARCH_ARM_HAVE_NEON),true)
-	LOCAL_CFLAGS += -D__ARM_HAVE_NEON
+	LOCAL_CFLAGS += -D__ARM_HAVE_NEON \
+	                -mvectorize-with-neon-quad
 endif
 endif
 
