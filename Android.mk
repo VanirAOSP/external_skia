@@ -268,6 +268,10 @@ LOCAL_SRC_FILES:= \
 	src/utils/SkSfntUtils.cpp \
 	src/utils/SkUnitMappers.cpp
 
+#  JUICE SPRINGSTEEN. KING OF THE JUICE.
+LOCAL_CFLAGS += -ffast-math -Wno-error=strict-aliasing -flto -fuse-linker-plugin
+LOCAL_LDLIBS += -flto -fuse-linker-plugin
+
 ifeq ($(TARGET_ARCH),arm)
 
 ifeq ($(ARCH_ARM_HAVE_NEON),true)
@@ -379,7 +383,7 @@ endif
 # FIXME this should really be limited to files that need it, such as
 # src/utils/SkCamera.cpp -- pretty bad violations going on in there,
 # but most of the rest of skia is good
-LOCAL_CFLAGS += -fno-strict-aliasing
+#LOCAL_CFLAGS += -fno-strict-aliasing
 
 LOCAL_LDLIBS += -lpthread
 
