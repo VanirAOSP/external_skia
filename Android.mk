@@ -377,10 +377,7 @@ ifeq ($(NO_FALLBACK_FONT),true)
 	LOCAL_CFLAGS += -DNO_FALLBACK_FONT
 endif
 
-# FIXME this should really be limited to files that need it, such as
-# src/utils/SkCamera.cpp -- pretty bad violations going on in there,
-# but most of the rest of skia is good
-LOCAL_CFLAGS += -fno-strict-aliasing
+LOCAL_CFLAGS += -Wno-error=strict-aliasing -fstrict-aliasing
 
 LOCAL_LDLIBS += -lpthread
 
@@ -408,6 +405,8 @@ endif
 ifeq ($(ARCH_ARM_HAVE_NEON),true)
        LOCAL_CFLAGS += -DGR_ANDROID_BUILD=1
 endif
+
+LOCAL_CFLAGS += -Wno-error=strict-aliasing -fstrict-aliasing
 
 LOCAL_SRC_FILES:= \
   src/gpu/GrPrintf_skia.cpp \
@@ -502,6 +501,8 @@ include $(BUILD_STATIC_LIBRARY)
 include $(CLEAR_VARS)
 
 LOCAL_ARM_MODE := arm
+
+LOCAL_CFLAGS += -Wno-error=strict-aliasing -fstrict-aliasing
 
 LOCAL_SRC_FILES := \
   third_party/glu/libtess/dict.c \
