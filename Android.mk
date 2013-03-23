@@ -35,6 +35,8 @@ ifeq ($(TARGET_ARCH),arm)
 
 LOCAL_ARM_MODE := arm
 
+LOCAL_CFLAGS += -D__CPU_ARCH_ARM
+
 # need a flag to tell the C side when we're on devices with large memory
 # budgets (i.e. larger than the low-end devices that initially shipped)
 ifeq ($(ARCH_ARM_HAVE_VFP),true)
