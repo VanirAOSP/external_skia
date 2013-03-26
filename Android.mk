@@ -281,7 +281,7 @@ LOCAL_SRC_FILES += \
 	src/opts/memset16_neon.S \
 	src/opts/memset32_neon.S
 
-LOCAL_CFLAGS += -DNEON_BLITANTIH
+LOCAL_CFLAGS += -DNEON_BLITANTIH -DSK_CPU_LENDIAN
 LOCAL_SRC_FILES += \
 	src/core/asm/SkBlitter_RGB16_NEON.S
 endif
