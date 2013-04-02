@@ -613,7 +613,14 @@ int main (int argc, char * const argv[]) {
                 saveFile(bench->getName(), configName, outDir.c_str(),
                          device->accessBitmap(false));
             }
-        }
+ /*for lava_test_shell */
+            {
+                SkString str;
+                str.printf("running bench [%d %d] %28s %4s %s = %6.2f : %s ", dim.fX, dim.fY,bench->getName(), \
+                configName,"ms",(timer.fWall / repeatDraw),"pass");
+                log_progress(str);
+            }
+       }
         log_progress("\n");
     }
 
