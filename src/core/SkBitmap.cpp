@@ -116,7 +116,6 @@ SkBitmap& SkBitmap::operator=(const SkBitmap& src) {
         } else {    // we have a pixelref, so pixels/ctable reflect it
             // ignore the values from the memcpy
             fPixels = NULL;
-            fUnscaledBitmap = NULL;
             fColorTable = NULL;
             // Note that what to for genID is somewhat arbitrary. We have no
             // way to track changes to raw pixels across multiple SkBitmaps.
@@ -138,7 +137,6 @@ void SkBitmap::swap(SkBitmap& other) {
     SkTSwap(fPixelLockCount, other.fPixelLockCount);
     SkTSwap(fMipMap, other.fMipMap);
     SkTSwap(fPixels, other.fPixels);
-    SkTSwap(fUnscaledBitmap, other.fUnscaledBitmap);
     SkTSwap(fRawPixelGenerationID, other.fRawPixelGenerationID);
     SkTSwap(fRowBytes, other.fRowBytes);
     SkTSwap(fWidth, other.fWidth);
@@ -293,18 +291,10 @@ void SkBitmap::updatePixelsFromRef() const {
                 p = (char*)p + fPixelRefOffset;
             }
             fPixels = p;
-            if (NULL != fUnscaledBitmap) {
-                delete fUnscaledBitmap;
-                fUnscaledBitmap = NULL;
-            }
             SkRefCnt_SafeAssign(fColorTable, fPixelRef->colorTable());
         } else {
             SkASSERT(0 == fPixelLockCount);
             fPixels = NULL;
-            if (NULL != fUnscaledBitmap) {
-                delete fUnscaledBitmap;
-                fUnscaledBitmap = NULL;
-            }
             if (fColorTable) {
                 fColorTable->unref();
                 fColorTable = NULL;
@@ -387,8 +377,6 @@ void SkBitmap::freePixels() {
         fColorTable = NULL;
     }
 
-    freeUnscaledBitmap();
-
     if (NULL != fPixelRef) {
         if (fPixelLockCount > 0) {
             fPixelRef->unlockPixels();
@@ -399,13 +387,6 @@ void SkBitmap::freePixels() {
     }
     fPixelLockCount = 0;
     fPixels = NULL;
-}
-
-void SkBitmap::freeUnscaledBitmap() {
-    if (NULL != fUnscaledBitmap) {
-        delete fUnscaledBitmap;
-        fUnscaledBitmap = NULL;
-    }
 }
 
 void SkBitmap::freeMipMap() {
@@ -907,7 +888,6 @@ bool SkBitmap::copyTo(SkBitmap* dst, Config dstConfig, Allocator* alloc) const {
         // did we get lucky and we can just return tmpSrc?
         if (tmpSrc.config() == dstConfig && NULL == alloc) {
             dst->swap(tmpSrc);
-            dst->fUnscaledBitmap = NULL;
             return true;
         }
 
@@ -970,7 +950,6 @@ bool SkBitmap::copyTo(SkBitmap* dst, Config dstConfig, Allocator* alloc) const {
     tmpDst.setIsOpaque(src->isOpaque());
 
     dst->swap(tmpDst);
-    dst->fUnscaledBitmap = NULL;
     return true;
 }
 
