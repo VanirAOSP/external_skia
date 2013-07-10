@@ -1,19 +1,32 @@
 /*
- * Copyright 2009 The Android Open Source Project
+ * Copyright 2012 The Android Open Source Project
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
 
 
-#include "SkBlitRow.h"
 #include "SkBlitMask.h"
+#include "SkBlitRow.h"
 #include "SkColorPriv.h"
 #include "SkDither.h"
+#include "SkUtils.h"
+
+#include "SkCachePreload_arm.h"
 
 #if defined(__ARM_HAVE_NEON)
 #include <arm_neon.h>
 #endif
+
+extern "C"  void S32A_Opaque_BlitRow32_arm(SkPMColor* SK_RESTRICT dst,
+                                            const SkPMColor* SK_RESTRICT src,
+                                            int count,
+                                            U8CPU alpha);
+
+extern "C"  void S32A_Blend_BlitRow32_arm_neon(SkPMColor* SK_RESTRICT dst,
+                                          const SkPMColor* SK_RESTRICT src,
+                                          int count,
+                                          U8CPU alpha);
 
 #if defined(__ARM_HAVE_NEON) && defined(SK_CPU_LENDIAN)
 static void S32A_D565_Opaque_neon(uint16_t* SK_RESTRICT dst,
@@ -29,6 +42,10 @@ static void S32A_D565_Opaque_neon(uint16_t* SK_RESTRICT dst,
                       "vmov.u8    d31, #1<<7                  \n\t"
                       "vld1.16    {q12}, [%[dst]]             \n\t"
                       "vld4.8     {d0-d3}, [%[src]]           \n\t"
+                      // Thumb does not support the standard ARM conditional
+                      // instructions but instead requires the 'it' instruction
+                      // to signal conditional execution
+                      "it eq                                  \n\t"
                       "moveq      ip, #8                      \n\t"
                       "mov        %[keep_dst], %[dst]         \n\t"
                       
@@ -470,14 +487,18 @@ static void S32A_D565_Opaque_v7(uint16_t* SK_RESTRICT dst,
                   : "memory", "cc", "r3", "r4", "r5", "r6", "r7", "ip"
                   );
 }
-#define S32A_D565_Opaque_PROC       S32A_D565_Opaque_v7
 #define S32A_D565_Blend_PROC        NULL
 #define S32_D565_Blend_Dither_PROC  NULL
 #else
-#define S32A_D565_Opaque_PROC       NULL
 #define S32A_D565_Blend_PROC        NULL
 #define S32_D565_Blend_Dither_PROC  NULL
 #endif
+
+/*
+ * Use neon version of BLIT assembly code from S32A_D565_Opaque_arm.S, where we process
+ * 16 pixels at-a-time and also optimize for alpha=255 case.
+ */
+#define S32A_D565_Opaque_PROC       NULL
 
 /* Don't have a special version that assumes each src is opaque, but our S32A
     is still faster than the default, so use it here
@@ -487,7 +508,16 @@ static void S32A_D565_Opaque_v7(uint16_t* SK_RESTRICT dst,
 
 ///////////////////////////////////////////////////////////////////////////////
 
-#if defined(__ARM_HAVE_NEON) && defined(SK_CPU_LENDIAN) && defined(TEST_SRC_ALPHA)
+#if defined(__ARM_HAVE_NEON) && defined(SK_CPU_LENDIAN) && defined(ENABLE_OPTIMIZED_S32A_BLITTERS)
+
+/* External function in file S32A_Opaque_BlitRow32_neon.S */
+extern "C" void S32A_Opaque_BlitRow32_neon(SkPMColor* SK_RESTRICT dst,
+                                           const SkPMColor* SK_RESTRICT src,
+                                           int count, U8CPU alpha);
+
+#define S32A_Opaque_BlitRow32_PROC  S32A_Opaque_BlitRow32_neon
+
+#elif defined(__ARM_HAVE_NEON) && defined(SK_CPU_LENDIAN) && defined(TEST_SRC_ALPHA)
 
 static void S32A_Opaque_BlitRow32_neon_test_alpha(SkPMColor* SK_RESTRICT dst,
                                   const SkPMColor* SK_RESTRICT src,
@@ -663,6 +693,10 @@ TAIL:
 
 #elif defined(__ARM_HAVE_NEON) && defined(SK_CPU_LENDIAN)
 
+/*
+ * User S32A_Opaque_BlitRow32 function from S32A_Opaque_BlitRow32.S
+ */
+#if 0
 static void S32A_Opaque_BlitRow32_neon(SkPMColor* SK_RESTRICT dst,
                                   const SkPMColor* SK_RESTRICT src,
                                   int count, U8CPU alpha) {
@@ -786,6 +820,13 @@ static void S32A_Opaque_BlitRow32_neon(SkPMColor* SK_RESTRICT dst,
 }
 
 #define	S32A_Opaque_BlitRow32_PROC	S32A_Opaque_BlitRow32_neon
+#endif
+
+/*
+ * Use asm version of BlitRow function. Neon instructions are
+ * used for armv7 targets.
+ */
+#define S32A_Opaque_BlitRow32_PROC  S32A_Opaque_BlitRow32_arm
 
 #elif defined (__ARM_ARCH__) /* #if defined(__ARM_HAVE_NEON) && defined... */
 
@@ -1191,6 +1232,18 @@ static void S32A_Opaque_BlitRow32_arm(SkPMColor* SK_RESTRICT dst,
 #define	S32A_Opaque_BlitRow32_PROC	NULL
 #endif
 
+
+#if defined(__ARM_HAVE_NEON) && defined(SK_CPU_LENDIAN) && defined(ENABLE_OPTIMIZED_S32A_BLITTERS)
+
+/* External function in file S32A_Blend_BlitRow32_neon.S */
+extern "C" void S32A_Blend_BlitRow32_neon(SkPMColor* SK_RESTRICT dst,
+                                          const SkPMColor* SK_RESTRICT src,
+                                          int count, U8CPU alpha);
+
+#define S32A_Blend_BlitRow32_PROC  S32A_Blend_BlitRow32_neon
+
+#else
+
 /*
  * ARM asm version of S32A_Blend_BlitRow32
  */
@@ -1323,6 +1376,8 @@ static void S32A_Blend_BlitRow32_arm(SkPMColor* SK_RESTRICT dst,
 
 }
 #define	S32A_Blend_BlitRow32_PROC	S32A_Blend_BlitRow32_arm
+#endif
+
 
 /* Neon version of S32_Blend_BlitRow32()
  * portable version is in src/core/SkBlitRow_D32.cpp
@@ -1409,7 +1464,135 @@ static void S32_Blend_BlitRow32_neon(SkPMColor* SK_RESTRICT dst,
 
 ///////////////////////////////////////////////////////////////////////////////
 
-#if defined(__ARM_HAVE_NEON) && defined(SK_CPU_LENDIAN)
+#if defined(__ARM_HAVE_NEON) && defined(SK_CPU_LENDIAN) && defined(ENABLE_OPTIMIZED_S32A_BLITTERS)
+
+/* This function was broken out to keep GCC from storing all registers on the stack
+   even though they would not be used in the assembler code */
+static __attribute__ ((noinline)) void S32A_D565_Opaque_Dither_Handle8(uint16_t * SK_RESTRICT dst,
+                                                                       const SkPMColor* SK_RESTRICT src,
+                                                                       int count, U8CPU alpha, int x, int y) {
+    DITHER_565_SCAN(y);
+    do {
+        SkPMColor c = *src++;
+        SkPMColorAssert(c);
+        if (c) {
+            unsigned a = SkGetPackedA32(c);
+
+            // dither and alpha are just temporary variables to work-around
+            // an ICE in debug.
+            unsigned dither = DITHER_VALUE(x);
+            unsigned alpha = SkAlpha255To256(a);
+            int d = SkAlphaMul(dither, alpha);
+
+            unsigned sr = SkGetPackedR32(c);
+            unsigned sg = SkGetPackedG32(c);
+            unsigned sb = SkGetPackedB32(c);
+            sr = SkDITHER_R32_FOR_565(sr, d);
+            sg = SkDITHER_G32_FOR_565(sg, d);
+            sb = SkDITHER_B32_FOR_565(sb, d);
+
+            uint32_t src_expanded = (sg << 24) | (sr << 13) | (sb << 2);
+            uint32_t dst_expanded = SkExpand_rgb_16(*dst);
+            dst_expanded = dst_expanded * (SkAlpha255To256(255 - a) >> 3);
+            // now src and dst expanded are in g:11 r:10 x:1 b:10
+            *dst = SkCompact_rgb_16((src_expanded + dst_expanded) >> 5);
+        }
+        dst += 1;
+        DITHER_INC_X(x);
+    } while (--count != 0);
+}
+
+
+static void S32A_D565_Opaque_Dither_neon(uint16_t * SK_RESTRICT dst,
+                                         const SkPMColor* SK_RESTRICT src,
+                                         int count, U8CPU alpha, int x, int y) {
+    SkASSERT(255 == alpha);
+
+    if (count >= 8) {
+        asm volatile (
+                    "pld            [%[src]]                        \n\t"   // Preload source
+                    "pld            [%[dst]]                        \n\t"   // Preload destination pixels
+                    "and            %[y], %[y], #0x03               \n\t"   // Mask y by 3
+                    "vmov.i8        d31, #0x01                      \n\t"   // Set up alpha constant
+                    "add            %[y], %[y], lsl #1              \n\t"   // and multiply with 12 to get the row offset
+                    "and            %[x], %[x], #0x03               \n\t"   // Mask x by 3
+                    "vmov.i16       q12, #256                       \n\t"   // Set up alpha constant
+                    "add            %[y], %[matrix], %[y], lsl #2   \n\t"   //
+                    "add            r7, %[x], %[y]                  \n\t"   //
+                    "vld1.8         {d26}, [r7]                     \n\t"   // Load dither values
+                    "add            %[x], %[count]                  \n\t"   //
+                    "vmov.i16       q11, #0x3F                      \n\t"   // Set up green mask constant
+                    "and            %[x], %[x], #0x03               \n\t"   // Mask x by 3
+                    "vmovl.u8       q13, d26                        \n\t"   // Expand dither to 16-bit
+                    "add            r7, %[x], %[y]                  \n\t"   //
+                    "vmov.i16       q10, #0x1F                      \n\t"   // Set up blue mask constant
+                    "vld1.8         {d28}, [r7]                     \n\t"   // Load iteration 2+ dither values
+                    "ands           r7, %[count], #7                \n\t"   // Calculate first iteration increment
+                    "moveq          r7, #8                          \n\t"   // Do full iteration?
+                    "vmovl.u8       q14, d28                        \n\t"   // Expand dither to 16-bit
+                    "vld4.8         {d0-d3}, [%[src]]               \n\t"   // Load eight source pixels
+                    "vld1.16        {q3}, [%[dst]]                  \n\t"   // Load destination 565 pixels
+                    "add            %[src], r7, lsl #2              \n\t"   // Increment source pointer
+                    "add            %[dst], r7, lsl #1              \n\t"   // Increment destination buffer pointer
+                    "subs           %[count], r7                    \n\t"   // Decrement loop counter
+                    "sub            r7, %[dst], r7, lsl #1          \n\t"   // Save original destination pointer
+                    "b              2f                              \n\t"
+                    "1:                                             \n\t"
+                    "vld4.8         {d0-d3}, [%[src]]!              \n\t"   // Load eight source pixels
+                    "vld1.16        {q3}, [%[dst]]!                 \n\t"   // Load destination 565 pixels
+                    "vst1.16        {q2}, [r7]                      \n\t"   // Write result to memory
+                    "sub            r7, %[dst], #8*2                \n\t"   // Calculate next loop's destination pointer
+                    "subs           %[count], #8                    \n\t"   // Decrement loop counter
+                    "2:                                             \n\t"
+                    "pld            [%[src]]                        \n\t"   // Preload destination pixels
+                    "pld            [%[dst]]                        \n\t"   // Preload destination pixels
+                    "vaddl.u8       q2, d3, d31                     \n\t"   // Add 1 to alpha to get 0-256
+                    "vshr.u8        d16, d0, #5                     \n\t"   // Calculate source red subpixel
+                    "vmul.u16       q2, q2, q13                     \n\t"   // Multiply alpha with dither value
+                    "vsub.i8        d0, d16                         \n\t"   // red = (red - (red >> 5) + dither)
+                    "vshrn.i16      d30, q2, #8                     \n\t"   // Shift and narrow result to 0-7
+                    "vadd.i8        d0, d30                         \n\t"   //
+                    "vshr.u8        d16, d2, #5                     \n\t"   // Calculate source blue subpixel
+                    "vsub.i8        d2, d16                         \n\t"   // blue = (blue - (blue >> 5) + dither)
+                    "vshr.u8        d16, d1, #6                     \n\t"   // Calculate source green subpixel
+                    "vadd.i8        d2, d30                         \n\t"   //
+                    "vsub.i8        d1, d16                         \n\t"   // green = (green - (green >> 6) + (dither >> 1))
+                    "vshr.u8        d30, #1                         \n\t"   //
+                    "vadd.i8        d1, d30                         \n\t"   //
+                    "vsubw.u8       q2, q12, d3                     \n\t"   // Calculate inverse alpha 256-1
+                    "vshr.u16       q8, q3, #5                      \n\t"   // Extract destination green pixel
+                    "vshr.u16       q9, q3, #11                     \n\t"   // Extract destination red pixel
+                    "vand           q8, q11                         \n\t"   // Shift green
+                    "vand           q3, q10                         \n\t"   // Extract destination blue pixel
+                    "vshr.u16       q2, #3                          \n\t"   // Shift alpha
+                    "vshll.u8       q1, d2, #2                      \n\t"   // Calculate destination blue pixel
+                    "vmla.i16       q1, q3, q2                      \n\t"   // ...and add to source pixel
+                    "vshll.u8       q3, d1, #3                      \n\t"   // Calculate destination green pixel
+                    "vmov.u8        q13, q14                        \n\t"   // Set dither matrix to iteration 2+ values
+                    "vmla.i16       q3, q8, q2                      \n\t"   // ...and add to source pixel
+                    "vshll.u8       q8, d0, #2                      \n\t"   // Calculate destination red pixel
+                    "vmla.i16       q8, q9, q2                      \n\t"   // ...and add to source pixel
+                    "vshr.u16       q1, #5                          \n\t"   // Pack blue pixel
+                    "vand           q2, q1, q10                     \n\t"   //
+                    "vshr.u16       q3, #5                          \n\t"   // Pack green pixel
+                    "vsli.16        q2, q3, #5                      \n\t"   // ...and insert
+                    "vshr.u16       q8, #5                          \n\t"   // Pack red pixel
+                    "vsli.16        q2, q8, #11                     \n\t"   // ...and insert
+                    "bne            1b                              \n\t"   // If inner loop counter != 0, loop
+                    "vst1.16        {q2}, [r7]                      \n\t"   // Write result to memory
+                    : [src] "+r" (src), [dst] "+r" (dst), [count] "+r" (count), [x] "+r" (x), [y] "+r" (y)
+                    : [matrix] "r" (gDitherMatrix_Neon)
+                    : "cc", "memory", "r7", "d0", "d1", "d2", "d3", "d4", "d5", "d6", "d7", "d16", "d17", "d18", "d19", "d20", "d21", "d22", "d23", "d24", "d25", "d26", "d27", "d28", "d29", "d30", "d31"
+                    );
+    }
+    else {
+        S32A_D565_Opaque_Dither_Handle8(dst, src, count, alpha, x, y);
+    }
+}
+
+#define	S32A_D565_Opaque_Dither_PROC S32A_D565_Opaque_Dither_neon
+
+#elif defined(__ARM_HAVE_NEON) && defined(SK_CPU_LENDIAN)
 
 #undef	DEBUG_OPAQUE_DITHER
 
@@ -1799,6 +1982,105 @@ static void S32_D565_Opaque_Dither_neon(uint16_t* SK_RESTRICT dst,
 #define	S32_D565_Opaque_Dither_PROC NULL
 #endif
 
+#if defined(__ARM_HAVE_NEON) && defined(SK_CPU_LENDIAN)
+static void Color32_neon(SkPMColor* dst, const SkPMColor* src, int count,
+                         SkPMColor color) {
+    if (count <= 0) {
+        return;
+    }
+
+    if (0 == color) {
+        if (src != dst) {
+            memcpy(dst, src, count * sizeof(SkPMColor));
+        }
+        return;
+    }
+
+    unsigned colorA = SkGetPackedA32(color);
+    if (255 == colorA) {
+        sk_memset32(dst, color, count);
+    } else {
+        unsigned scale = 256 - SkAlpha255To256(colorA);
+
+        if (count >= 8) {
+            // at the end of this assembly, count will have been decremented
+            // to a negative value. That is, if count mod 8 = x, it will be
+            // -8 +x coming out.
+            asm volatile (
+                PLD128(src, 0)
+
+                "vdup.32    q0, %[color]                \n\t"
+
+                PLD128(src, 128)
+
+                // scale numerical interval [0-255], so load as 8 bits
+                "vdup.8     d2, %[scale]                \n\t"
+
+                PLD128(src, 256)
+
+                "subs       %[count], %[count], #8      \n\t"
+
+                PLD128(src, 384)
+
+                "Loop_Color32:                          \n\t"
+
+                // load src color, 8 pixels, 4 64 bit registers
+                // (and increment src).
+                "vld1.32    {d4-d7}, [%[src]]!          \n\t"
+
+                PLD128(src, 384)
+
+                // multiply long by scale, 64 bits at a time,
+                // destination into a 128 bit register.
+                "vmull.u8   q4, d4, d2                  \n\t"
+                "vmull.u8   q5, d5, d2                  \n\t"
+                "vmull.u8   q6, d6, d2                  \n\t"
+                "vmull.u8   q7, d7, d2                  \n\t"
+
+                // shift the 128 bit registers, containing the 16
+                // bit scaled values back to 8 bits, narrowing the
+                // results to 64 bit registers.
+                "vshrn.i16  d8, q4, #8                  \n\t"
+                "vshrn.i16  d9, q5, #8                  \n\t"
+                "vshrn.i16  d10, q6, #8                 \n\t"
+                "vshrn.i16  d11, q7, #8                 \n\t"
+
+                // adding back the color, using 128 bit registers.
+                "vadd.i8    q6, q4, q0                  \n\t"
+                "vadd.i8    q7, q5, q0                  \n\t"
+
+                // store back the 8 calculated pixels (2 128 bit
+                // registers), and increment dst.
+                "vst1.32    {d12-d15}, [%[dst]]!        \n\t"
+
+                "subs       %[count], %[count], #8      \n\t"
+                "bge        Loop_Color32                \n\t"
+                : [src] "+r" (src), [dst] "+r" (dst), [count] "+r" (count)
+                : [color] "r" (color), [scale] "r" (scale)
+                : "cc", "memory",
+                  "d0", "d1", "d2", "d3", "d4", "d5", "d6", "d7",
+                  "d8", "d9", "d10", "d11", "d12", "d13", "d14", "d15"
+                          );
+            // At this point, if we went through the inline assembly, count is
+            // a negative value:
+            // if the value is -8, there is no pixel left to process.
+            // if the value is -7, there is one pixel left to process
+            // ...
+            // And'ing it with 7 will give us the number of pixels
+            // left to process.
+            count = count & 0x7;
+        }
+
+        while (count > 0) {
+            *dst = color + SkAlphaMulQ(*src, scale);
+            src += 1;
+            dst += 1;
+            count--;
+        }
+    }
+}
+#endif
+
 ///////////////////////////////////////////////////////////////////////////////
 
 static const SkBlitRow::Proc platform_565_procs[] = {
@@ -1848,11 +2130,14 @@ SkBlitRow::Proc32 SkBlitRow::PlatformProcs32(unsigned flags) {
     return platform_32_procs[flags];
 }
 
-SkBlitRow::ColorProc SkBlitRow::PlatformColorProc() {
-    return NULL;
-}
-
 ///////////////////////////////////////////////////////////////////////////////
+SkBlitRow::ColorProc SkBlitRow::PlatformColorProc() {
+#if defined(__ARM_HAVE_NEON) && defined(SK_CPU_LENDIAN)
+    return Color32_neon;
+#else
+    return NULL;
+#endif
+}
 
 SkBlitMask::ColorProc SkBlitMask::PlatformColorProcs(SkBitmap::Config dstConfig,
                                                      SkMask::Format maskFormat,
