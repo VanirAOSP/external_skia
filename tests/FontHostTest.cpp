@@ -6,8 +6,9 @@
  */
 
 #include "Test.h"
+#include "SkPaint.h"
 #include "SkTypeface.h"
-#include "SkFontHost.h"
+#include "SkEndian.h"
 
 //#define DUMP_TABLES
 
@@ -24,19 +25,37 @@ static const struct TagSize {
     {   kFontTableTag_maxp,         32 },
 };
 
-static void test_tables(skiatest::Reporter* reporter, SkTypeface* face) {
-    SkFontID fontID = face->uniqueID();
+static void test_unitsPerEm(skiatest::Reporter* reporter, SkTypeface* face) {
+    int upem = face->getUnitsPerEm();
+    if (0 == upem) return;
 
-    int count = SkFontHost::CountTables(fontID);
+    size_t size = face->getTableSize(kFontTableTag_head);
+    if (size) {
+        SkAutoMalloc storage(size);
+        char* ptr = (char*)storage.get();
+        face->getTableData(kFontTableTag_head, 0, size, ptr);
+        // unitsPerEm is at offset 18 into the 'head' table.
+        int upem2 = SkEndian_SwapBE16(*(uint16_t*)&ptr[18]);
+        REPORTER_ASSERT(reporter, upem2 == upem);
+    }
+}
+
+static void test_tables(skiatest::Reporter* reporter, SkTypeface* face) {
+    if (false) { // avoid bit rot, suppress warning
+        SkFontID fontID = face->uniqueID();
+        REPORTER_ASSERT(reporter, fontID);
+    }
+
+    int count = face->countTables();
 
     SkAutoTMalloc<SkFontTableTag> storage(count);
     SkFontTableTag* tags = storage.get();
 
-    int count2 = SkFontHost::GetTableTags(fontID, tags);
+    int count2 = face->getTableTags(tags);
     REPORTER_ASSERT(reporter, count2 == count);
 
     for (int i = 0; i < count; ++i) {
-        size_t size = SkFontHost::GetTableSize(fontID, tags[i]);
+        size_t size = face->getTableSize(tags[i]);
         REPORTER_ASSERT(reporter, size > 0);
 
 #ifdef DUMP_TABLES
@@ -54,12 +73,11 @@ static void test_tables(skiatest::Reporter* reporter, SkTypeface* face) {
                 REPORTER_ASSERT(reporter, gKnownTableSizes[j].fSize == size);
             }
         }
-        
+
         // do we get the same size from GetTableData and GetTableSize
         {
             SkAutoMalloc data(size);
-            size_t size2 = SkFontHost::GetTableData(fontID, tags[i], 0, size,
-                                                    data.get());
+            size_t size2 = face->getTableData(tags[i], 0, size, data.get());
             REPORTER_ASSERT(reporter, size2 == size);
         }
     }
@@ -69,7 +87,7 @@ static void test_tables(skiatest::Reporter* reporter) {
     static const char* const gNames[] = {
         NULL,   // default font
         "Arial", "Times", "Times New Roman", "Helvetica", "Courier",
-        "Courier New",
+        "Courier New", "Terminal", "MS Sans Serif",
     };
 
     for (size_t i = 0; i < SK_ARRAY_COUNT(gNames); ++i) {
@@ -80,6 +98,7 @@ static void test_tables(skiatest::Reporter* reporter) {
             SkDebugf("%s\n", gNames[i]);
 #endif
             test_tables(reporter, face);
+            test_unitsPerEm(reporter, face);
             face->unref();
         }
     }

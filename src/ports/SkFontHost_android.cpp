@@ -1,21 +1,13 @@
-/* libs/graphics/ports/SkFontHost_android.cpp
-**
-** Copyright 2006, The Android Open Source Project
-**
-** Licensed under the Apache License, Version 2.0 (the "License");
-** you may not use this file except in compliance with the License.
-** You may obtain a copy of the License at
-**
-**     http://www.apache.org/licenses/LICENSE-2.0
-**
-** Unless required by applicable law or agreed to in writing, software
-** distributed under the License is distributed on an "AS IS" BASIS,
-** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-** See the License for the specific language governing permissions and
-** limitations under the License.
-*/
+/*
+ * Copyright 2006 The Android Open Source Project
+ *
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file.
+ */
 
 #include "SkFontHost.h"
+#include "SkFontDescriptor.h"
+#include "SkGlyphCache.h"
 #include "SkGraphics.h"
 #include "SkDescriptor.h"
 #include "SkMMapStream.h"
@@ -75,8 +67,7 @@ static bool getNameAndStyle(const char path[], SkString* name,
 
 static SkTypeface* deserializeLocked(SkStream* stream);
 static SkTypeface* createTypefaceLocked(const SkTypeface* familyFace,
-        const char familyName[], const void* data, size_t bytelength,
-        SkTypeface::Style style);
+        const char familyName[], SkTypeface::Style style);
 static SkStream* openStreamLocked(uint32_t fontID);
 static size_t getFileNameLocked(SkFontID fontID, char path[], size_t length, int32_t* index);
 static SkFontID nextLogicalFontLocked(const SkScalerContext::Rec& rec);
@@ -910,7 +901,7 @@ static SkTypeface* deserializeLocked(SkStream* stream) {
                     for (int j = i; j >= 0; --j) {
                         if (gSystemFonts[j].fNames != NULL) {
                             return createTypefaceLocked(NULL,
-                                    gSystemFonts[j].fNames[0], NULL, 0,
+                                    gSystemFonts[j].fNames[0],
                                     (SkTypeface::Style)style);
                         }
                     }
@@ -925,15 +916,13 @@ static SkTypeface* deserializeLocked(SkStream* stream) {
 
 SkTypeface* SkFontHost::CreateTypeface(const SkTypeface* familyFace,
                                        const char familyName[],
-                                       const void* data, size_t bytelength,
                                        SkTypeface::Style style) {
     SkAutoMutexAcquire  ac(gFamilyHeadAndNameListMutex);
-    return createTypefaceLocked(familyFace, familyName, data, bytelength, style);
+    return createTypefaceLocked(familyFace, familyName, style);
 }
 
 static SkTypeface* createTypefaceLocked(const SkTypeface* familyFace,
-        const char familyName[], const void* data, size_t bytelength,
-        SkTypeface::Style style) {
+        const char familyName[], SkTypeface::Style style) {
     loadSystemFontsLocked();
 
     // clip to legal style bits
@@ -997,12 +986,12 @@ static size_t getFileNameLocked(SkFontID fontID, char path[], size_t length, int
     }
 }
 
-SkFontID SkFontHost::NextLogicalFont(const SkScalerContext::Rec& rec) {
+SkFontID SkFontHost::NextLogicalFont(const SkScalerContextRec& rec) {
     SkAutoMutexAcquire  ac(gFamilyHeadAndNameListMutex);
     return nextLogicalFontLocked(rec);
 }
 
-static SkFontID nextLogicalFontLocked(const SkScalerContext::Rec& rec) {
+static SkFontID nextLogicalFontLocked(const SkScalerContextRec& rec) {
     loadSystemFontsLocked();
 
     const SkTypeface* origTypeface = findFromUniqueIDLocked(rec.fOrigFontID);
@@ -1106,7 +1095,7 @@ static SkFontID findFontIDForChar(SkUnichar uni, SkTypeface::Style style,
     paint.setTextEncoding(SkPaint::kUTF16_TextEncoding);
     paint.setFontVariant(fontVariant);
 
-    SkAutoGlyphCache autoCache(paint, NULL);
+    SkAutoGlyphCache autoCache(paint, NULL, NULL);
     SkGlyphCache*    cache = autoCache.getCache();
     SkFontID         fontID = 0;
 
@@ -1118,50 +1107,74 @@ static SkFontID findFontIDForChar(SkUnichar uni, SkTypeface::Style style,
 }
 
 struct HB_UnicodeMapping {
-    HB_Script script;
+    // TODO: when the WebView no longer needs harfbuzz_old, remove
+    HB_Script script_old;
+    hb_script_t script;
     const SkUnichar unicode;
 };
 
 /*
  * The following scripts are not complex fonts and we do not expect them to be parsed by this table
- * HB_Script_Common,
- * HB_Script_Greek,
- * HB_Script_Cyrillic,
- * HB_Script_Hangul
- * HB_Script_Inherited
+ * HB_SCRIPT_COMMON,
+ * HB_SCRIPT_GREEK,
+ * HB_SCRIPT_CYRILLIC,
+ * HB_SCRIPT_HANGUL
+ * HB_SCRIPT_INHERITED
  */
 
-static HB_UnicodeMapping HB_UnicodeMappingArray[] {
-    {HB_Script_Armenian,      0x0531},
-    {HB_Script_Hebrew,        0x0591},
-    {HB_Script_Arabic,        0x0600},
-    {HB_Script_Syriac,        0x0710},
-    {HB_Script_Thaana,        0x0780},
-    {HB_Script_Nko,           0x07C0},
-    {HB_Script_Devanagari,    0x0901},
-    {HB_Script_Bengali,       0x0981},
-    {HB_Script_Gurmukhi,      0x0A10},
-    {HB_Script_Gujarati,      0x0A90},
-    {HB_Script_Oriya,         0x0B10},
-    {HB_Script_Tamil,         0x0B82},
-    {HB_Script_Telugu,        0x0C10},
-    {HB_Script_Kannada,       0x0C90},
-    {HB_Script_Malayalam,     0x0D10},
-    {HB_Script_Sinhala,       0x0D90},
-    {HB_Script_Thai,          0x0E01},
-    {HB_Script_Lao,           0x0E81},
-    {HB_Script_Tibetan,       0x0F00},
-    {HB_Script_Myanmar,       0x1000},
-    {HB_Script_Georgian,      0x10A0},
-    // we don't currently support HB_Script_Ethiopic, it is a placeholder for an upstream merge
-    //{HB_Script_Ethiopic,    0x1200},
-    {HB_Script_Ogham,         0x1680},
-    {HB_Script_Runic,         0x16A0},
-    {HB_Script_Khmer,         0x1780},
+/* Harfbuzz (old) is missing a number of scripts in its table. For these,
+ * we include a value which can never happen. We won't get complex script
+ * shaping in these cases, but the library wouldn't know how to shape
+ * them anyway. */
+#define HB_Script_Unknown HB_ScriptCount
+
+static HB_UnicodeMapping HB_UnicodeMappingArray[] = {
+    {HB_Script_Armenian,   HB_SCRIPT_ARMENIAN,    0x0531},
+    {HB_Script_Hebrew,     HB_SCRIPT_HEBREW,      0x0591},
+    {HB_Script_Arabic,     HB_SCRIPT_ARABIC,      0x0600},
+    {HB_Script_Syriac,     HB_SCRIPT_SYRIAC,      0x0710},
+    {HB_Script_Thaana,     HB_SCRIPT_THAANA,      0x0780},
+    {HB_Script_Nko,        HB_SCRIPT_NKO,         0x07C0},
+    {HB_Script_Devanagari, HB_SCRIPT_DEVANAGARI,  0x0901},
+    {HB_Script_Bengali,    HB_SCRIPT_BENGALI,     0x0981},
+    {HB_Script_Gurmukhi,   HB_SCRIPT_GURMUKHI,    0x0A10},
+    {HB_Script_Gujarati,   HB_SCRIPT_GUJARATI,    0x0A90},
+    {HB_Script_Oriya,      HB_SCRIPT_ORIYA,       0x0B10},
+    {HB_Script_Tamil,      HB_SCRIPT_TAMIL,       0x0B82},
+    {HB_Script_Telugu,     HB_SCRIPT_TELUGU,      0x0C10},
+    {HB_Script_Kannada,    HB_SCRIPT_KANNADA,     0x0C90},
+    {HB_Script_Malayalam,  HB_SCRIPT_MALAYALAM,   0x0D10},
+    {HB_Script_Sinhala,    HB_SCRIPT_SINHALA,     0x0D90},
+    {HB_Script_Thai,       HB_SCRIPT_THAI,        0x0E01},
+    {HB_Script_Lao,        HB_SCRIPT_LAO,         0x0E81},
+    {HB_Script_Tibetan,    HB_SCRIPT_TIBETAN,     0x0F00},
+    {HB_Script_Myanmar,    HB_SCRIPT_MYANMAR,     0x1000},
+    {HB_Script_Georgian,   HB_SCRIPT_GEORGIAN,    0x10A0},
+    {HB_Script_Unknown,    HB_SCRIPT_ETHIOPIC,    0x1200},
+    {HB_Script_Unknown,    HB_SCRIPT_CHEROKEE,    0x13A0},
+    {HB_Script_Ogham,      HB_SCRIPT_OGHAM,       0x1680},
+    {HB_Script_Runic,      HB_SCRIPT_RUNIC,       0x16A0},
+    {HB_Script_Khmer,      HB_SCRIPT_KHMER,       0x1780},
+    {HB_Script_Unknown,    HB_SCRIPT_TAI_LE,      0x1950},
+    {HB_Script_Unknown,    HB_SCRIPT_NEW_TAI_LUE, 0x1980},
+    {HB_Script_Unknown,    HB_SCRIPT_TAI_THAM,    0x1A20},
+    {HB_Script_Unknown,    HB_SCRIPT_CHAM,        0xAA00},
 };
 
+static hb_script_t getHBScriptFromHBScriptOld(HB_Script script_old) {
+    hb_script_t script = HB_SCRIPT_INVALID;
+    int numSupportedFonts = sizeof(HB_UnicodeMappingArray) / sizeof(HB_UnicodeMapping);
+    for (int i = 0; i < numSupportedFonts; i++) {
+        if (script_old == HB_UnicodeMappingArray[i].script_old) {
+            script = HB_UnicodeMappingArray[i].script;
+            break;
+        }
+    }
+    return script;
+}
+
 // returns 0 for "Not Found"
-static SkUnichar getUnicodeFromHBScript(HB_Script script) {
+static SkUnichar getUnicodeFromHBScript(hb_script_t script) {
     SkUnichar unichar = 0;
     int numSupportedFonts = sizeof(HB_UnicodeMappingArray) / sizeof(HB_UnicodeMapping);
     for (int i = 0; i < numSupportedFonts; i++) {
@@ -1174,7 +1187,7 @@ static SkUnichar getUnicodeFromHBScript(HB_Script script) {
 }
 
 struct TypefaceLookupStruct {
-    HB_Script            script;
+    hb_script_t          script;
     SkTypeface::Style    style;
     SkPaint::FontVariant fontVariant;
     SkTypeface*          typeface;
@@ -1183,21 +1196,21 @@ struct TypefaceLookupStruct {
 SK_DECLARE_STATIC_MUTEX(gTypefaceTableMutex);  // This is the mutex for gTypefaceTable
 static SkTDArray<TypefaceLookupStruct> gTypefaceTable;  // This is protected by gTypefaceTableMutex
 
-static int typefaceLookupCompare(const TypefaceLookupStruct& first,
-        const TypefaceLookupStruct& second) {
-    if (first.script != second.script) {
-        return (first.script > second.script) ? 1 : -1;
+static int typefaceLookupCompare(const TypefaceLookupStruct* first,
+        const TypefaceLookupStruct* second) {
+    if (first->script != second->script) {
+        return (first->script > second->script) ? 1 : -1;
     }
-    if (first.style != second.style) {
-        return (first.style > second.style) ? 1 : -1;
+    if (first->style != second->style) {
+        return (first->style > second->style) ? 1 : -1;
     }
-    if (first.fontVariant != second.fontVariant) {
-        return (first.fontVariant > second.fontVariant) ? 1 : -1;
+    if (first->fontVariant != second->fontVariant) {
+        return (first->fontVariant > second->fontVariant) ? 1 : -1;
     }
     return 0;
 }
 
-SK_API SkTypeface* SkCreateTypefaceForScript(HB_Script script, SkTypeface::Style style,
+SK_API SkTypeface* SkCreateTypefaceForScriptNG(hb_script_t script, SkTypeface::Style style,
         SkPaint::FontVariant fontVariant) {
     SkTypeface* retTypeface = NULL;
 
@@ -1229,3 +1242,9 @@ SK_API SkTypeface* SkCreateTypefaceForScript(HB_Script script, SkTypeface::Style
     SkSafeRef(retTypeface);
     return retTypeface;
 }
+
+SK_API SkTypeface* SkCreateTypefaceForScript(HB_Script script, SkTypeface::Style style,
+        SkPaint::FontVariant fontVariant) {
+    return SkCreateTypefaceForScriptNG(getHBScriptFromHBScriptOld(script), style, fontVariant);
+}
+

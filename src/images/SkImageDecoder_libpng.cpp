@@ -17,6 +17,7 @@
 #include "SkStream.h"
 #include "SkTemplates.h"
 #include "SkUtils.h"
+#include "transform_scanline.h"
 
 extern "C" {
 #include "png.h"
@@ -30,7 +31,7 @@ public:
     }
     virtual ~SkPNGImageIndex() {
         if (png_ptr) {
-            png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
+            png_destroy_read_struct(&png_ptr, &info_ptr, png_infopp_NULL);
         }
         if (inputStream) {
             delete inputStream;
@@ -82,7 +83,7 @@ private:
 struct PNGAutoClean {
     PNGAutoClean(png_structp p, png_infop i): png_ptr(p), info_ptr(i) {}
     ~PNGAutoClean() {
-        png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
+        png_destroy_read_struct(&png_ptr, &info_ptr, png_infopp_NULL);
     }
 private:
     png_structp png_ptr;
@@ -90,7 +91,7 @@ private:
 };
 
 static void sk_read_fn(png_structp png_ptr, png_bytep data, png_size_t length) {
-    SkStream* sk_stream = (SkStream*)png_get_io_ptr(png_ptr);
+    SkStream* sk_stream = (SkStream*) png_ptr->io_ptr;
     size_t bytes = sk_stream->read(data, length);
     if (bytes != length) {
         png_error(png_ptr, "Read Error!");
@@ -98,7 +99,7 @@ static void sk_read_fn(png_structp png_ptr, png_bytep data, png_size_t length) {
 }
 
 static void sk_seek_fn(png_structp png_ptr, png_uint_32 offset) {
-    SkStream* sk_stream = (SkStream*)png_get_io_ptr(png_ptr);
+    SkStream* sk_stream = (SkStream*) png_ptr->io_ptr;
     sk_stream->rewind();
     (void)sk_stream->skip(offset);
 }
@@ -121,7 +122,7 @@ static void sk_error_fn(png_structp png_ptr, png_const_charp msg) {
 static void skip_src_rows(png_structp png_ptr, uint8_t storage[], int count) {
     for (int i = 0; i < count; i++) {
         uint8_t* tmp = storage;
-        png_read_rows(png_ptr, &tmp, NULL, 1);
+        png_read_rows(png_ptr, &tmp, png_bytepp_NULL, 1);
     }
 }
 
@@ -192,7 +193,7 @@ bool SkPNGImageDecoder::onDecodeInit(SkStream* sk_stream,
     /* Allocate/initialize the memory for image information. */
     png_infop info_ptr = png_create_info_struct(png_ptr);
     if (info_ptr == NULL) {
-        png_destroy_read_struct(&png_ptr, NULL, NULL);
+        png_destroy_read_struct(&png_ptr, png_infopp_NULL, png_infopp_NULL);
         return false;
     }
     *info_ptrp = info_ptr;
@@ -226,7 +227,7 @@ bool SkPNGImageDecoder::onDecodeInit(SkStream* sk_stream,
     png_uint_32 origWidth, origHeight;
     int bit_depth, color_type, interlace_type;
     png_get_IHDR(png_ptr, info_ptr, &origWidth, &origHeight, &bit_depth,
-            &color_type, &interlace_type, NULL, NULL);
+            &color_type, &interlace_type, int_p_NULL, int_p_NULL);
 
     /* tell libpng to strip 16 bit/color files down to 8 bits/color */
     if (bit_depth == 16) {
@@ -239,7 +240,7 @@ bool SkPNGImageDecoder::onDecodeInit(SkStream* sk_stream,
     }
     /* Expand grayscale images to the full 8 bits from 1, 2, or 4 bits/pixel */
     if (color_type == PNG_COLOR_TYPE_GRAY && bit_depth < 8) {
-        png_set_expand_gray_1_2_4_to_8(png_ptr);
+        png_set_gray_1_2_4_to_8(png_ptr);
     }
 
     /* Make a grayscale image into RGB. */
@@ -268,7 +269,7 @@ bool SkPNGImageDecoder::onDecode(SkStream* sk_stream, SkBitmap* decodedBitmap,
     png_uint_32 origWidth, origHeight;
     int bit_depth, color_type, interlace_type;
     png_get_IHDR(png_ptr, info_ptr, &origWidth, &origHeight, &bit_depth,
-            &color_type, &interlace_type, NULL, NULL);
+            &color_type, &interlace_type, int_p_NULL, int_p_NULL);
 
     SkBitmap::Config    config;
     bool                hasAlpha = false;
@@ -348,7 +349,7 @@ bool SkPNGImageDecoder::onDecode(SkStream* sk_stream, SkBitmap* decodedBitmap,
         for (int i = 0; i < number_passes; i++) {
             for (png_uint_32 y = 0; y < origHeight; y++) {
                 uint8_t* bmRow = decodedBitmap->getAddr8(0, y);
-                png_read_rows(png_ptr, &bmRow, NULL, 1);
+                png_read_rows(png_ptr, &bmRow, png_bytepp_NULL, 1);
             }
         }
     } else {
@@ -383,7 +384,7 @@ bool SkPNGImageDecoder::onDecode(SkStream* sk_stream, SkBitmap* decodedBitmap,
                 uint8_t* row = base;
                 for (png_uint_32 y = 0; y < origHeight; y++) {
                     uint8_t* bmRow = row;
-                    png_read_rows(png_ptr, &bmRow, NULL, 1);
+                    png_read_rows(png_ptr, &bmRow, png_bytepp_NULL, 1);
                     row += rb;
                 }
             }
@@ -400,7 +401,7 @@ bool SkPNGImageDecoder::onDecode(SkStream* sk_stream, SkBitmap* decodedBitmap,
 
             for (int y = 0; y < height; y++) {
                 uint8_t* tmp = srcRow;
-                png_read_rows(png_ptr, &tmp, NULL, 1);
+                png_read_rows(png_ptr, &tmp, png_bytepp_NULL, 1);
                 reallyHasAlpha |= sampler.next(srcRow);
                 if (y < height - 1) {
                     skip_src_rows(png_ptr, srcRow, sampler.srcDY() - 1);
@@ -439,10 +440,15 @@ bool SkPNGImageDecoder::onBuildTileIndex(SkStream* sk_stream, int *width,
         return false;
     }
 
+    if (setjmp(png_jmpbuf(png_ptr)) != 0) {
+        png_destroy_read_struct(&png_ptr, &info_ptr, png_infopp_NULL);
+        return false;
+    }
+
     int bit_depth, color_type, interlace_type;
     png_uint_32 origWidth, origHeight;
     png_get_IHDR(png_ptr, info_ptr, &origWidth, &origHeight, &bit_depth,
-            &color_type, &interlace_type, NULL, NULL);
+            &color_type, &interlace_type, int_p_NULL, int_p_NULL);
 
     *width = origWidth;
     *height = origHeight;
@@ -459,7 +465,7 @@ bool SkPNGImageDecoder::getBitmapConfig(png_structp png_ptr, png_infop info_ptr,
     png_uint_32 origWidth, origHeight;
     int bit_depth, color_type, interlace_type;
     png_get_IHDR(png_ptr, info_ptr, &origWidth, &origHeight, &bit_depth,
-            &color_type, &interlace_type, NULL, NULL);
+            &color_type, &interlace_type, int_p_NULL, int_p_NULL);
 
     // check for sBIT chunk data, in case we should disable dithering because
     // our data is not truely 8bits per component
@@ -470,13 +476,10 @@ bool SkPNGImageDecoder::getBitmapConfig(png_structp png_ptr, png_infop info_ptr,
                  info_ptr->sig_bit.alpha);
 #endif
         // 0 seems to indicate no information available
-        png_color_8p sig_bit_p;
-        if (png_get_sBIT(png_ptr, info_ptr, &sig_bit_p) == PNG_INFO_sBIT){
-            if (pos_le(sig_bit_p->red, SK_R16_BITS) &&
-                    pos_le(sig_bit_p->green, SK_G16_BITS) &&
-                    pos_le(sig_bit_p->blue, SK_B16_BITS)) {
-                *doDitherp = false;
-            }
+        if (pos_le(info_ptr->sig_bit.red, SK_R16_BITS) &&
+                pos_le(info_ptr->sig_bit.green, SK_G16_BITS) &&
+                pos_le(info_ptr->sig_bit.blue, SK_B16_BITS)) {
+            *doDitherp = false;
         }
     }
 
@@ -630,7 +633,7 @@ bool SkPNGImageDecoder::onDecodeRegion(SkBitmap* bm, SkIRect region) {
     png_uint_32 origWidth, origHeight;
     int bit_depth, color_type, interlace_type;
     png_get_IHDR(png_ptr, info_ptr, &origWidth, &origHeight, &bit_depth,
-            &color_type, &interlace_type, NULL, NULL);
+            &color_type, &interlace_type, int_p_NULL, int_p_NULL);
 
     SkIRect rect = SkIRect::MakeWH(origWidth, origHeight);
 
@@ -711,6 +714,7 @@ bool SkPNGImageDecoder::onDecodeRegion(SkBitmap* bm, SkIRect region) {
     * and update info structure.  REQUIRED if you are expecting libpng to
     * update the palette for you (ie you selected such a transform above).
     */
+    png_ptr->pass = 0;
     png_read_update_info(png_ptr, info_ptr);
 
     int actualTop = rect.fTop;
@@ -720,11 +724,11 @@ bool SkPNGImageDecoder::onDecodeRegion(SkBitmap* bm, SkIRect region) {
             png_configure_decoder(png_ptr, &actualTop, i);
             for (int j = 0; j < rect.fTop - actualTop; j++) {
                 uint8_t* bmRow = decodedBitmap->getAddr8(0, 0);
-                png_read_rows(png_ptr, &bmRow, NULL, 1);
+                png_read_rows(png_ptr, &bmRow, png_bytepp_NULL, 1);
             }
             for (png_uint_32 y = 0; y < origHeight; y++) {
                 uint8_t* bmRow = decodedBitmap->getAddr8(0, y);
-                png_read_rows(png_ptr, &bmRow, NULL, 1);
+                png_read_rows(png_ptr, &bmRow, png_bytepp_NULL, 1);
             }
         }
     } else {
@@ -758,13 +762,13 @@ bool SkPNGImageDecoder::onDecodeRegion(SkBitmap* bm, SkIRect region) {
             for (int i = 0; i < number_passes; i++) {
                 png_configure_decoder(png_ptr, &actualTop, i);
                 for (int j = 0; j < rect.fTop - actualTop; j++) {
-                    uint8_t* bmRow = decodedBitmap->getAddr8(0, 0);
-                    png_read_rows(png_ptr, &bmRow, NULL, 1);
+                    uint8_t* bmRow = (uint8_t*)decodedBitmap->getPixels();
+                    png_read_rows(png_ptr, &bmRow, png_bytepp_NULL, 1);
                 }
                 uint8_t* row = base;
                 for (png_uint_32 y = 0; y < rect.height(); y++) {
                     uint8_t* bmRow = row;
-                    png_read_rows(png_ptr, &bmRow, NULL, 1);
+                    png_read_rows(png_ptr, &bmRow, png_bytepp_NULL, 1);
                     row += rb;
                 }
             }
@@ -782,12 +786,12 @@ bool SkPNGImageDecoder::onDecodeRegion(SkBitmap* bm, SkIRect region) {
             skip_src_rows(png_ptr, srcRow, sampler.srcY0());
 
             for (int i = 0; i < rect.fTop - actualTop; i++) {
-                uint8_t* bmRow = decodedBitmap->getAddr8(0, 0);
-                png_read_rows(png_ptr, &bmRow, NULL, 1);
+                uint8_t* bmRow = (uint8_t*)decodedBitmap->getPixels();
+                png_read_rows(png_ptr, &bmRow, png_bytepp_NULL, 1);
             }
             for (int y = 0; y < height; y++) {
                 uint8_t* tmp = srcRow;
-                png_read_rows(png_ptr, &tmp, NULL, 1);
+                png_read_rows(png_ptr, &tmp, png_bytepp_NULL, 1);
                 reallyHasAlpha |= sampler.next(srcRow);
                 if (y < height - 1) {
                     skip_src_rows(png_ptr, srcRow, sampler.srcDY() - 1);
@@ -815,103 +819,10 @@ bool SkPNGImageDecoder::onDecodeRegion(SkBitmap* bm, SkIRect region) {
 #include "SkUnPreMultiply.h"
 
 static void sk_write_fn(png_structp png_ptr, png_bytep data, png_size_t len) {
-    SkWStream* sk_stream = (SkWStream*)png_get_io_ptr(png_ptr);
+    SkWStream* sk_stream = (SkWStream*)png_ptr->io_ptr;
     if (!sk_stream->write(data, len)) {
         png_error(png_ptr, "sk_write_fn Error!");
     }
-}
-
-typedef void (*transform_scanline_proc)(const char* SK_RESTRICT src,
-                                        int width, char* SK_RESTRICT dst);
-
-static void transform_scanline_565(const char* SK_RESTRICT src, int width,
-                                   char* SK_RESTRICT dst) {
-    const uint16_t* SK_RESTRICT srcP = (const uint16_t*)src;    
-    for (int i = 0; i < width; i++) {
-        unsigned c = *srcP++;
-        *dst++ = SkPacked16ToR32(c);
-        *dst++ = SkPacked16ToG32(c);
-        *dst++ = SkPacked16ToB32(c);
-    }
-}
-
-static void transform_scanline_888(const char* SK_RESTRICT src, int width,
-                                   char* SK_RESTRICT dst) {
-    const SkPMColor* SK_RESTRICT srcP = (const SkPMColor*)src;    
-    for (int i = 0; i < width; i++) {
-        SkPMColor c = *srcP++;
-        *dst++ = SkGetPackedR32(c);
-        *dst++ = SkGetPackedG32(c);
-        *dst++ = SkGetPackedB32(c);
-    }
-}
-
-static void transform_scanline_444(const char* SK_RESTRICT src, int width,
-                                   char* SK_RESTRICT dst) {
-    const SkPMColor16* SK_RESTRICT srcP = (const SkPMColor16*)src;    
-    for (int i = 0; i < width; i++) {
-        SkPMColor16 c = *srcP++;
-        *dst++ = SkPacked4444ToR32(c);
-        *dst++ = SkPacked4444ToG32(c);
-        *dst++ = SkPacked4444ToB32(c);
-    }
-}
-
-static void transform_scanline_8888(const char* SK_RESTRICT src, int width,
-                                    char* SK_RESTRICT dst) {
-    const SkPMColor* SK_RESTRICT srcP = (const SkPMColor*)src;
-    const SkUnPreMultiply::Scale* SK_RESTRICT table = 
-                                              SkUnPreMultiply::GetScaleTable();
-
-    for (int i = 0; i < width; i++) {
-        SkPMColor c = *srcP++;
-        unsigned a = SkGetPackedA32(c);
-        unsigned r = SkGetPackedR32(c);
-        unsigned g = SkGetPackedG32(c);
-        unsigned b = SkGetPackedB32(c);
-
-        if (0 != a && 255 != a) {
-            SkUnPreMultiply::Scale scale = table[a];
-            r = SkUnPreMultiply::ApplyScale(scale, r);
-            g = SkUnPreMultiply::ApplyScale(scale, g);
-            b = SkUnPreMultiply::ApplyScale(scale, b);
-        }
-        *dst++ = r;
-        *dst++ = g;
-        *dst++ = b;
-        *dst++ = a;
-    }
-}
-
-static void transform_scanline_4444(const char* SK_RESTRICT src, int width,
-                                    char* SK_RESTRICT dst) {
-    const SkPMColor16* SK_RESTRICT srcP = (const SkPMColor16*)src;
-    const SkUnPreMultiply::Scale* SK_RESTRICT table = 
-                                              SkUnPreMultiply::GetScaleTable();
-
-    for (int i = 0; i < width; i++) {
-        SkPMColor16 c = *srcP++;
-        unsigned a = SkPacked4444ToA32(c);
-        unsigned r = SkPacked4444ToR32(c);
-        unsigned g = SkPacked4444ToG32(c);
-        unsigned b = SkPacked4444ToB32(c);
-
-        if (0 != a && 255 != a) {
-            SkUnPreMultiply::Scale scale = table[a];
-            r = SkUnPreMultiply::ApplyScale(scale, r);
-            g = SkUnPreMultiply::ApplyScale(scale, g);
-            b = SkUnPreMultiply::ApplyScale(scale, b);
-        }
-        *dst++ = r;
-        *dst++ = g;
-        *dst++ = b;
-        *dst++ = a;
-    }
-}
-
-static void transform_scanline_index8(const char* SK_RESTRICT src, int width,
-                                      char* SK_RESTRICT dst) {
-    memcpy(dst, src, width);
 }
 
 static transform_scanline_proc choose_proc(SkBitmap::Config config,
@@ -932,7 +843,7 @@ static transform_scanline_proc choose_proc(SkBitmap::Config config,
         { SkBitmap::kARGB_8888_Config,  true,   transform_scanline_8888 },
         { SkBitmap::kARGB_4444_Config,  false,  transform_scanline_444 },
         { SkBitmap::kARGB_4444_Config,  true,   transform_scanline_4444 },
-        { SkBitmap::kIndex8_Config,     false,   transform_scanline_index8 },
+        { SkBitmap::kIndex8_Config,     false,  transform_scanline_memcpy },
     };
 
     for (int i = SK_ARRAY_COUNT(gMap) - 1; i >= 0; --i) {
@@ -1107,7 +1018,7 @@ bool SkPNGImageEncoder::doEncode(SkWStream* stream, const SkBitmap& bitmap,
 
     info_ptr = png_create_info_struct(png_ptr);
     if (NULL == info_ptr) {
-        png_destroy_write_struct(&png_ptr,  NULL);
+        png_destroy_write_struct(&png_ptr,  png_infopp_NULL);
         return false;
     }
 
@@ -1119,7 +1030,7 @@ bool SkPNGImageEncoder::doEncode(SkWStream* stream, const SkBitmap& bitmap,
         return false;
     }
 
-    png_set_write_fn(png_ptr, (void*)stream, sk_write_fn, NULL);
+    png_set_write_fn(png_ptr, (void*)stream, sk_write_fn, png_flush_ptr_NULL);
 
     /* Set the image information here.  Width and height are up to 2^31,
     * bit_depth is one of 1, 2, 4, 8, or 16, but valid values also depend on
@@ -1169,6 +1080,9 @@ bool SkPNGImageEncoder::doEncode(SkWStream* stream, const SkBitmap& bitmap,
     return true;
 }
 
+///////////////////////////////////////////////////////////////////////////////
+DEFINE_DECODER_CREATOR(PNGImageDecoder);
+DEFINE_ENCODER_CREATOR(PNGImageEncoder);
 ///////////////////////////////////////////////////////////////////////////////
 
 #include "SkTRegistry.h"
