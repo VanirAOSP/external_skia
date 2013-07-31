@@ -45,6 +45,10 @@ LOCAL_CFLAGS += -DTEST_SRC_ALPHA
 # draw-time, at which point we know which SkTypeface is being drawn
 LOCAL_CFLAGS += -DSK_USE_FREETYPE_EMBOLDEN
 
+# There's some pretty bad (and pretty hard to fix) aliasing violations
+# in SkCamera3D::patchToMatrix.
+# Probably not worth fixing, since it's legacy code anyway.
+LOCAL_CFLAGS += -fno-strict-aliasing
 
 LOCAL_CFLAGS += -fvisibility=hidden
 LOCAL_SRC_FILES:= SavedPagePlayback.cpp
