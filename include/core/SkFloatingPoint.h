@@ -91,7 +91,16 @@ extern const uint32_t gIEEENotANumber;
 extern const uint32_t gIEEEInfinity;
 extern const uint32_t gIEEENegativeInfinity;
 
+#if 0
 #define SK_FloatNaN                 (*reinterpret_cast<const float*>(&gIEEENotANumber))
 #define SK_FloatInfinity            (*reinterpret_cast<const float*>(&gIEEEInfinity))
 #define SK_FloatNegativeInfinity    (*reinterpret_cast<const float*>(&gIEEENegativeInfinity))
+#else
+// Note: NAN is a 0x7fc00000 NaN while gIEEENotANumber is 0x7fffffff, so
+// using this definition may break some bogus code (using x == SK_FloatNaN
+// rather than isnan() or the likes to check for NaN)
+#define SK_FloatNaN                 NAN
+#define SK_FloatInfinity            INFINITY
+#define SK_FloatNegativeInfinity    -INFINITY
+#endif
 #endif

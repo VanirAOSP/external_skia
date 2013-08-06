@@ -449,6 +449,8 @@ LOCAL_SRC_FILES += \
 	src/opts/SkUtils_opts_none.cpp
 endif
 
+# Workaround for http://gcc.gnu.org/bugzilla/show_bug.cgi?id=54781
+LOCAL_CFLAGS += $(call cc-ifversion, -eq, 48, -fno-tree-ter)
 
 # these are for emoji support, needed by webkit
 LOCAL_SRC_FILES += \
