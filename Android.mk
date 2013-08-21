@@ -509,7 +509,9 @@ LOCAL_EXPORT_C_INCLUDES := \
 	$(LOCAL_PATH)/include/ports \
 	$(LOCAL_PATH)/include/utils
 
-LOCAL_CFLAGS += -Wno-error=strict-aliasing
+# if all else fails...
+#LOCAL_CFLAGS += -fno-strict-aliasing
+#LOCAL_CFLAGS += -Wno-error=strict-aliasing
 
 LOCAL_LDLIBS += -lpthread
 
