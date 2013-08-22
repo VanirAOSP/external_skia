@@ -8,8 +8,6 @@
  * Special cases for when alpha is zero or opaque.
  */
 
-#if defined(__ARM_HAVE_NEON) && defined(ENABLE_OPTIMIZED_S32A_BLITTERS)
-
     .text
     .fpu    neon
     .align
@@ -19,7 +17,7 @@
 
 S32A_Blend_BlitRow32_neon:
     cmp           r2, #8                         // The main code requires at least 8 pixels
-    ble           BlitSmall
+    ble           .LBlitSmall
     /* Setup constants, and do the first 1-8 pixels */
     vld4.8        {d20-d23}, [r1]                // Load eight source RGBA pixels
     vld4.8        {d24-d27}, [r0]                // Load eight destination RGBA pixels
@@ -70,14 +68,14 @@ S32A_Blend_BlitRow32_neon:
     vshrn.i16     d26, q10, #8                   // Shift and narrow blue
     vshrn.i16     d27, q11, #8                   // Shift and narrow alpha
     vst4.8        {d24-d27}, [r4]                // Write result to memory
-    bmi           PostLoop                       // Do we have enough pixels to enter the main loop?
+    bmi           .LPostLoop                     // Do we have enough pixels to enter the main loop?
     /* Main loop, blitting 16 pixels per iteration */
-Loop:
+.LLoop:
     pld           [r1, #32]                      // Pre-load next eight source pixels
     pld           [r0, #32]                      // Pre-load next eight destination pixels
     vmov          r4, r5, d3                     // Move alpha to ARM for test
     orrs          r4, r5                         // Check if source alpha is fully transparent
-    beq           AllZero1                       // If so, jump to special case handling
+    beq           .LAllZero1                     // If so, jump to special case handling
     vmovl.u8      q8, d0                         // Expand source red to 16-bit
     vmovl.u8      q9, d1                         // Expand source green to 16-bit
     vmovl.u8      q0, d2                         // Expand source blue to 16-bit
@@ -107,12 +105,12 @@ Loop:
     vshrn.i16     d6, q0, #8                     // Shift and narrow blue
     vshrn.i16     d7, q1, #8                     // Shift and narrow alpha
     vst4.8        {d4-d7}, [r3]!                 // Write result to memory
-GoBack1:
+.LGoBack1:
     pld           [r1, #32]                      // Pre-load next eight source pixels
     pld           [r0, #32]                      // Pre-load next eight destination pixels
     vmov          r4, r5, d23                     // Move alpha to ARM for test
     orrs          r4, r5                         // Check if source alpha is fully transparent
-    beq           AllZero2                       // If so, jump to special case handling
+    beq           .LAllZero2                     // If so, jump to special case handling
     vmovl.u8      q8, d20                        // Expand source red to 16-bit
     vmovl.u8      q9, d21                        // Expand source green to 16-bit
     vmovl.u8      q10, d22                       // Expand source blue to 16-bit
@@ -143,13 +141,13 @@ GoBack1:
     vshrn.i16     d26, q10, #8                   // Shift and narrow blue
     vshrn.i16     d27, q11, #8                   // Shift and narrow alpha
     vst4.8        {d24-d27}, [r3]!               // Write result to memory
-    bpl           Loop
-PostLoop:
+    bpl           .LLoop
+.LPostLoop:
     add           r2, r2, #16
     vmov.i16      q10, q4
     ldmia         sp!, {r4-r5}
     vpop          {q4-q5}
-LoopRemaining:
+.LLoopRemaining:
     vmovl.u8      q8, d0                         // Expand source red to 16-bit
     vmovl.u8      q9, d1                         // Expand source green to 16-bit
     vmovl.u8      q0, d2                         // Expand source blue to 16-bit
@@ -182,36 +180,36 @@ LoopRemaining:
     bxmi          lr
     vld4.8        {d0-d3}, [r1]                  // Load eight source RGBA pixels
     vld4.8        {d4-d7}, [r0]                  // Load eight destination RGBA pixels
-    b             LoopRemaining
-AllZero1:
+    b             .LLoopRemaining
+.LAllZero1:
     vld4.8        {d20-d23}, [r1]!               // Pre-load next eight source RGBA pixels
     vld4.8        {d24-d27}, [r0]!               // Pre-load next eight destination RGBA pixels
     add           r3, r3, #32                    // Advance destination write pointer
-    b             GoBack1
-AllZero2:
+    b             .LGoBack1
+.LAllZero2:
     vld4.8        {d0-d3}, [r1]!                 // Pre-load next eight source RGBA pixels
     vld4.8        {d4-d7}, [r0]!                 // Pre-load next eight destination RGBA pixels
     add           r3, r3, #32                    // Advance destination write pointer
     subs          r2, r2, #16                    // Decrement loop counter
-    bpl           Loop
-    b             PostLoop
+    bpl           .LLoop
+    b             .LPostLoop
 
 /* Handle small blits, 0-8 pixels */
-BlitSmall:
-    beq           Blit8
+.LBlitSmall:
+    beq           .LBlit8
     pld           [r1, #0]                       // Pre-load eight source pixels
     pld           [r0, #0]                       // Pre-load eight destination pixels
     add           r3, #1                         // Modify global alpha to 0...256 range
     vdup.16       q13, r3                        // Set up global alpha
-    ldr           r3, =AlphaIndex
+    adr           r3, .LAlphaIndex
     vmov.i16      q15, #256                      // Set up alpha constant
     vld1.8        {d29}, [r3]                    // Set up alpha index table
     vmov.i16      q12, #0xFF00                   // Set up mask constant
     cmp           r2, #1                         // Exit if count is zero
-    beq           Blit1
+    beq           .LBlit1
     bxlt          lr                             // Zero pixels left
     /* loop for neon 2-pixel code */
-Blit2:
+.LBlit2:
     vld1.32       {d0}, [r1]!                    // Load two source RGBA pixels
     vld1.32       {d1}, [r0]                     // Load two destination RGBA pixels
     sub           r2, r2, #2                     // Decrement width counter
@@ -225,10 +223,10 @@ Blit2:
     vshrn.i16     d0, q8, #8                     // Shift and narrow result
     vst1.32       {d0}, [r0]!                    // Store two RGBA pixels
     cmp           r2, #1                         // Exit if count is zero
-    bhi           Blit2                          // Still two or more pixels left
+    bhi           .LBlit2                          // Still two or more pixels left
     bxlt          lr                             // Zero pixels left
 	/* code to handle any one last pixel */
-Blit1:
+.LBlit1:
     vld1.32       {d0[0]}, [r1]                  // Load one source RGBA pixel
     vld1.32       {d1[0]}, [r0]                  // Load one destination RGBA pixel
     vmovl.u8      q8, d0                         // Expand source to 16-bit
@@ -242,7 +240,7 @@ Blit1:
     vst1.32       {d0[0]}, [r0]                  // Store one RGBA pixel
     bx            lr
 	/* Handle 8 pixels */
-Blit8:
+.LBlit8:
     add           r3, #1                         // Modify global alpha to 0...256 range
     sub           r2, r2, #8                     // Decrement loop counter
     vdup.16       q10, r3                        // Set up global alpha
@@ -250,13 +248,11 @@ Blit8:
     vld4.8        {d0-d3}, [r1]                  // Load eight source RGBA pixels
     vld4.8        {d4-d7}, [r0]                  // Load eight destination RGBA pixels
     vmov.i16      q15, #256
-    b             LoopRemaining
+    b             .LLoopRemaining
 
     .endfunc
 
-    .data
     .align
-AlphaIndex:
+.LAlphaIndex:
     .byte 7, 7, 7, 7, 15, 15, 15, 15
 
-#endif

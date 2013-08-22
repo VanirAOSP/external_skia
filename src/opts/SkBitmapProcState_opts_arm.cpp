@@ -17,10 +17,6 @@
 #endif
 
 
-#if defined(__ARM_HAVE_NEON)
-#include <arm_neon.h>
-#endif
-
 #if SK_ARM_ARCH >= 6 && !defined(SK_CPU_BENDIAN)
 void SI8_D16_nofilter_DX_arm(
     const SkBitmapProcState& s,
@@ -196,194 +192,6 @@ void SI8_opaque_D32_nofilter_DX_arm(const SkBitmapProcState& s,
 
 
 #if defined(__ARM_HAVE_NEON) && defined(SK_CPU_LENDIAN)
-void S16_opaque_D32_nofilter_DX_neon_asm(const SkBitmapProcState& s,
-                            const uint32_t* __restrict__ xy,
-                            int count, uint32_t* __restrict__ colors) {
-
-    const uint16_t* __restrict__ srcAddr = (const uint16_t*)s.fBitmap->getPixels();
-
-    uint16_t* index;
-    uint16_t src;
-    int i;
-
-    srcAddr = (const uint16_t*)((const char*)srcAddr + xy[0] * s.fBitmap->rowBytes());
-
-    const uint16_t* __restrict__ xx = (const uint16_t*)(++xy);
-
-    if (1 == s.fBitmap->width()) {
-
-        src = srcAddr[0];
-        uint32_t dstValue = SkPixel16ToPixel32(src);
-        sk_memset32(colors, dstValue, count);
-    } else if ((xx[count-1] - xx[0]) == (count-1)) {
-        // No scaling
-        const uint16_t* src_data = (const uint16_t*)(srcAddr + xx[0]);
-        asm volatile (
-                      "subs       %[count], %[count], #8          \n\t"   // count -= 8, set flag
-                      "blt        2f                              \n\t"   // if count < 0, branch to label 2
-                      "vmov.u16   q8, #0xFF00                     \n\t"   // Load alpha value into q8 for later use.
-                      "1:                                         \n\t"   // 8 loop
-                      // Handle 8 pixels in one loop.
-
-                      "vld1.u16   {q0}, [%[src_data]]!            \n\t"   // load eight src 565 pixels
-
-                      "vshl.u16   q2, q0, #5                      \n\t"   // put green in the 6 high bits of q2
-                      "vshl.u16   q3, q0, #11                     \n\t"   // put blue in the 5 high bits of q3
-                      "vmov.u16   q1, q8                          \n\t"   // copy alpha from q8
-                      "vsri.u16   q1, q3, #8                      \n\t"   // put blue below alpha in q1
-                      "vsri.u16   q1, q3, #13                     \n\t"   // put 3 MSB blue below blue in q1
-                      "vsri.u16   q2, q2, #6                      \n\t"   // put 2 MSB green below green in q2
-                      "vsri.u16   q2, q0, #8                      \n\t"   // put red below green in q2
-                      "vsri.u16   q2, q0, #13                     \n\t"   // put 3 MSB red below red in q2
-                      "vzip.16    q2, q1                          \n\t"   // interleave q1 and q2
-                      "vst1.16    {d4, d5}, [%[colors]]!          \n\t"   // store q1 to dst
-                      "subs       %[count], %[count], #8          \n\t"   // count -= 8, set flag
-                      "vst1.16    {d2, d3}, [%[colors]]!          \n\t"   // store q1 to dst
-
-                      "bge        1b                              \n\t"   // loop if count >= 0
-                      "2:                                         \n\t"   // exit of 8 loop
-
-                      "adds       %[count], %[count], #4          \n\t"   // add 4 to count to see if a 4 loop is needed.
-                      "blt        3f                              \n\t"   // if count < 0, branch to label 3
-
-                      // Handle 4 pixels at once
-
-                      "vld1.u16   {d0}, [%[src_data]]!            \n\t"   // load eight src 565 pixels
-
-                      "vshl.u16   d2, d0, #5                      \n\t"   // put green in the 6 high bits of d2
-                      "vshl.u16   d1, d0, #11                     \n\t"   // put blue in the 5 high bits of d1
-                      "vmov.u16   d3, d16                         \n\t"   // copy alpha from d16
-                      "vsri.u16   d3, d1, #8                      \n\t"   // put blue below alpha in d3
-                      "vsri.u16   d3, d1, #13                     \n\t"   // put 3 MSB blue below blue in d3
-                      "vsri.u16   d2, d2, #6                      \n\t"   // put 2 MSB green below green in d2
-                      "vsri.u16   d2, d0, #8                      \n\t"   // put red below green in d2
-                      "vsri.u16   d2, d0, #13                     \n\t"   // put 3 MSB red below red in d2
-                      "vzip.16    d2, d3                          \n\t"   // interleave d2 and d3
-                      "vst1.16    {d2, d3}, [%[colors]]!          \n\t"   // store d2 and d3 to dst
-
-                      "3:                                         \n\t"   // end
-                      : [src_data] "+r" (src_data), [colors] "+r" (colors), [count] "+r" (count)
-                      :
-                      : "cc", "memory","d0","d1","d2","d3","d4","d5","d6","d7","d16","d17"
-                     );
-
-        for (i = (count & 3); i > 0; --i) {
-            *colors++ = SkPixel16ToPixel32(*src_data++);
-        }
-
-    } else {
-        // Scaling case
-        uint16_t data[8];
-
-        asm volatile (
-                      "subs       %[count], %[count], #8          \n\t"   // count -= 8, set flag
-                      "blt        2f                              \n\t"   // if count < 0, branch to label 2
-                      "vmov.u16   q8, #0xFF00                     \n\t"   // Load alpha value into q8 for later use.
-                      "1:                                         \n\t"   // 8 loop
-                      // Handle 8 pixels in one loop.
-                      "ldmia      %[xx]!, {r4, r5, r6, r7}        \n\t"   // load ptrs to pixels 0-7
-
-                      "mov        r4, r4, lsl #1                  \n\t"   // <<1 because of 16 bit pointer
-                      "mov        r5, r5, lsl #1                  \n\t"   // <<1 because of 16 bit pointer
-                      "mov        r6, r6, lsl #1                  \n\t"   // <<1 because of 16 bit pointer
-                      "mov        r7, r7, lsl #1                  \n\t"   // <<1 because of 16 bit pointer
-
-                      "uxth       r8, r4                          \n\t"   // extract ptr 0
-                      "mov        r4, r4, lsr #16                 \n\t"   // extract ptr 1
-                      "ldrh       r8, [%[srcAddr], r8]            \n\t"   // load pixel 0 from image
-                      "ldrh       r4, [%[srcAddr], r4]            \n\t"   // load pixel 1 from image
-                      "pkhbt      r4, r8, r4, lsl #16             \n\t"   // combine pixel 0 and 1 in one register
-
-                      "uxth       r8, r5                          \n\t"   // extract ptr 2
-                      "mov        r5, r5, lsr #16                 \n\t"   // extract ptr 3
-                      "ldrh       r8, [%[srcAddr], r8]            \n\t"   // load pixel 2 from image
-                      "ldrh       r5, [%[srcAddr], r5]            \n\t"   // load pixel 3 from image
-                      "pkhbt      r5, r8, r5, lsl #16             \n\t"   // combine pixel 2 and 3 in one register
-
-                      "uxth       r8, r6                          \n\t"   // extract ptr 4
-                      "mov        r6, r6, lsr #16                 \n\t"   // extract ptr 5
-                      "ldrh       r8, [%[srcAddr], r8]            \n\t"   // load pixel 4 from image
-                      "ldrh       r6, [%[srcAddr], r6]            \n\t"   // load pixel 5 from image
-                      "pkhbt      r6, r8, r6, lsl #16             \n\t"   // combine pixel 4 and 5 in one register
-
-                      "uxth       r8, r7                          \n\t"   // extract ptr 6
-                      "mov        r7, r7, lsr #16                 \n\t"   // extract ptr 7
-                      "ldrh       r8, [%[srcAddr], r8]            \n\t"   // load pixel 6 from image
-                      "ldrh       r7, [%[srcAddr], r7]            \n\t"   // load pixel 7 from image
-                      "pkhbt      r7, r8, r7, lsl #16             \n\t"   // combine pixel 6 and 7 in one register
-
-                      "stmia      %[data], {r4, r5, r6, r7}       \n\t"   // store 8 src pixels
-
-                      "vld1.u16   {q0}, [%[data]]                 \n\t"   // load eight src 565 pixels
-
-                      "vshl.u16   q2, q0, #5                      \n\t"   // put green in the 6 high bits of q2
-                      "vshl.u16   q3, q0, #11                     \n\t"   // put blue in the 5 high bits of q3
-                      "vmov.u16   q1, q8                          \n\t"   // copy alpha from q8
-                      "vsri.u16   q1, q3, #8                      \n\t"   // put blue below alpha in q1
-                      "vsri.u16   q1, q3, #13                     \n\t"   // put 3 MSB blue below blue in q1
-                      "vsri.u16   q2, q2, #6                      \n\t"   // put 2 MSB green below green in q2
-                      "vsri.u16   q2, q0, #8                      \n\t"   // put red below green in q2
-                      "vsri.u16   q2, q0, #13                     \n\t"   // put 3 MSB red below red in q2
-                      "vzip.16    q2, q1                          \n\t"   // interleave q1 and q2
-                      "vst1.16    {d4, d5}, [%[colors]]!          \n\t"   // store q1 to dst
-                      "subs       %[count], %[count], #8          \n\t"   // count -= 8, set flag
-                      "vst1.16    {d2, d3}, [%[colors]]!          \n\t"   // store q2 to dst
-
-                      "bge        1b                              \n\t"   // loop if count >= 0
-                      "2:                                         \n\t"   // exit of 8 loop
-
-                      "adds       %[count], %[count], #4          \n\t"   // add 4 to count to see if a 4 loop is needed.
-                      "blt        3f                              \n\t"   // if count < 0, branch to label 3
-
-                      // Handle 4 pixels at once
-                      "ldmia      %[xx]!, {r4, r5}                \n\t"   // load ptrs to pixels 0-3
-
-                      "mov        r4, r4, lsl #1                  \n\t"   // <<1 because of 16 bit pointer
-                      "mov        r5, r5, lsl #1                  \n\t"   // <<1 because of 16 bit pointer
-
-                      "uxth       r8, r4                          \n\t"   // extract ptr 0
-                      "mov        r4, r4, lsr #16                 \n\t"   // extract ptr 1
-                      "ldrh       r8, [%[srcAddr], r8]            \n\t"   // load pixel 0 from image
-                      "ldrh       r4, [%[srcAddr], r4]            \n\t"   // load pixel 1 from image
-                      "pkhbt      r4, r8, r4, lsl #16             \n\t"   // combine pixel 0 and 1 in one register
-
-                      "uxth       r8, r5                          \n\t"   // extract ptr 2
-                      "mov        r5, r5, lsr #16                 \n\t"   // extract ptr 3
-                      "ldrh       r8, [%[srcAddr], r8]            \n\t"   // load pixel 2 from image
-                      "ldrh       r5, [%[srcAddr], r5]            \n\t"   // load pixel 3 from image
-                      "pkhbt      r5, r8, r5, lsl #16             \n\t"   // combine pixel 2 and 3 in one register
-
-                      "stmia      %[data], {r4, r5}               \n\t"   // store 4 src pixels
-
-                      "vld1.u16   {d0}, [%[data]]                 \n\t"   // load eight src 565 pixels
-
-                      "vshl.u16   d2, d0, #5                      \n\t"   // put green in the 6 high bits of d2
-                      "vshl.u16   d1, d0, #11                     \n\t"   // put blue in the 5 high bits of d1
-                      "vmov.u16   d3, d16                         \n\t"   // copy alpha from d16
-                      "vsri.u16   d3, d1, #8                      \n\t"   // put blue below alpha in d3
-                      "vsri.u16   d3, d1, #13                     \n\t"   // put 3 MSB blue below blue in d3
-                      "vsri.u16   d2, d2, #6                      \n\t"   // put 2 MSB green below green in d2
-                      "vsri.u16   d2, d0, #8                      \n\t"   // put red below green in d2
-                      "vsri.u16   d2, d0, #13                     \n\t"   // put 3 MSB red below red in d2
-                      "vzip.16    d2, d3                          \n\t"   // interleave d2 and d3
-                      "vst1.16    {d2, d3}, [%[colors]]!          \n\t"   // store d2 and d3 to dst
-
-                      "3:                                         \n\t"   // End
-                      : [xx] "+r" (xx), [colors] "+r" (colors), [count] "+r" (count)
-                      : [data] "r" (data), [srcAddr] "r" (srcAddr)
-                      : "cc", "memory","r4","r5","r6","r7","r8","d0","d1","d2","d3","d4","d5","d6","d7","d16","d17"
-                     );
-
-        for (i = (count & 3); i > 0; --i) {
-            src = srcAddr[*xx++]; *colors++ = SkPixel16ToPixel32(src);
-        }
-    }
-}
-#endif
-
-
-
-#if defined(__ARM_HAVE_NEON) && defined(SK_CPU_LENDIAN)
 void Clamp_S32_opaque_D32_filter_DX_shaderproc(const SkBitmapProcState& s, int x, int y,
                                                SkPMColor* SK_RESTRICT colors, int count) {
     SkASSERT((s.fInvType & ~(SkMatrix::kTranslate_Mask |
@@ -549,6 +357,214 @@ void Clamp_S32_opaque_D32_filter_DX_shaderproc(const SkBitmapProcState& s, int x
             count--;
         }
     } while (count != 0);
+}
+
+
+void Clamp_SI8_opaque_D32_filter_DX_shaderproc_opt(const SkBitmapProcState& s, int x, int y,
+                                               uint32_t* SK_RESTRICT colors, int count) {
+    SkASSERT((s.fInvType & ~(SkMatrix::kTranslate_Mask |
+                             SkMatrix::kScale_Mask)) == 0);
+    SkASSERT(s.fInvKy == 0);
+    SkASSERT(count > 0 && colors != NULL);
+    SkASSERT(s.fDoFilter);
+    SkDEBUGCODE(SkASSERT(s.fBitmap->config() == SkBitmap::kIndex8_Config);)
+
+    const unsigned maxX = s.fBitmap->width() - 1;
+    const SkFixed oneX = s.fFilterOneX;
+    const SkFixed dx = s.fInvSx;
+    SkFixed fx;
+    const uint8_t* SK_RESTRICT row0;
+    const uint8_t* SK_RESTRICT row1;
+    unsigned subY;
+
+    {
+        SkPoint pt;
+        s.fInvProc(*s.fInvMatrix, SkIntToScalar(x) + SK_ScalarHalf,
+                   SkIntToScalar(y) + SK_ScalarHalf, &pt);
+        SkFixed fy = SkScalarToFixed(pt.fY) - (s.fFilterOneY >> 1);
+        const unsigned maxY = s.fBitmap->height() - 1;
+        // compute our two Y values up front
+        subY = ((fy >> 12) & 0xF);
+        int y0 = SkClampMax(fy >> 16, maxY);
+        int y1 = SkClampMax((fy + s.fFilterOneY) >> 16, maxY);
+
+        const char* SK_RESTRICT srcAddr = (const char*)s.fBitmap->getPixels();
+        unsigned rb = s.fBitmap->rowBytes();
+        row0 = (const uint8_t*)(srcAddr + y0 * rb);
+        row1 = (const uint8_t*)(srcAddr + y1 * rb);
+        // now initialize fx
+        fx = SkScalarToFixed(pt.fX) - (oneX >> 1);
+    }
+
+    const SkPMColor* SK_RESTRICT table = s.fBitmap->getColorTable()->lockColors();
+
+    do {
+        // Check if we can do the next four pixels using ARM NEON asm
+        if ((count >= 4) &&
+            (((dx >= 0) && (fx >= 0) && (((fx + 3 * dx) >> 16) < (const signed)maxX)) ||
+             ((dx < 0) && ((fx >> 16) < (const signed)maxX) && (((fx + 3 * dx) >> 16) >= 0)))) {
+            int asm_count;
+
+            // How many iterations can we do while still clamped?
+            if (dx >= 0) {
+                asm_count = (((((const signed)maxX - 1) << 16) - fx) / dx) >> 2;
+            } else {
+                asm_count = ((0 - fx) / dx) >> 2;
+            }
+
+            if (asm_count <= 0) {
+                asm_count = 1;
+            } else if ((asm_count << 2) > count) {
+                asm_count = count >> 2;
+            }
+
+            count -= asm_count << 2;
+
+            // We know that oneX is 1.0 since we are running clamped.
+            // This means that we can load both x0 and x1 offsets in one go.
+            asm volatile (
+                // Setup constants
+                "rsb            r8, %[subY], #16                \n\t"   // 16 - subY
+                "vdup.8         d30, %[subY]                    \n\t"   // Create constant for subY
+                "vdup.8         d31, r8                         \n\t"   // Create constant for 16 - subY
+                "vmov.u16       d29, #16                        \n\t"   // Create constant for 16
+                "1:                                             \n\t"   // Loop start
+                // Pre-load pixel #1
+                "asr            r7, %[fx], #16                  \n\t"   // Calculate offset fx >> 16
+                "ldrh           r8, [%[row0], r7]               \n\t"   // Fetch row0 color table offsets
+                "ldrh           r7, [%[row1], r7]               \n\t"   // Fetch row1 color table offsets
+                "subs           %[cnt], %[cnt], #1              \n\t"   // Decrement loop counter
+                "and            r6, r8, #0xFF                   \n\t"   // Extract first offset
+                "lsr            r8, r8, #8                      \n\t"   // Extract second offset
+                "add            r6, %[table], r6, lsl #2        \n\t"   // Calculate a00 address for table
+                "add            r8, %[table], r8, lsl #2        \n\t"   // Calculate a01 address for table
+                "vld1.32        {d0[0]}, [r6]                   \n\t"   // Load a00 RGBA pixel from table
+                "vld1.32        {d0[1]}, [r8]                   \n\t"   // Load a01 RGBA pixel from table
+                "and            r6, r7, #0xFF                   \n\t"   // Extract first offset
+                "lsr            r7, r7, #8                      \n\t"   // Extract second offset
+                "add            r6, %[table], r6, lsl #2        \n\t"   // Calculate a10 address for table
+                "add            r7, %[table], r7, lsl #2        \n\t"   // Calculate a11 address for table
+                "vld1.32        {d1[0]}, [r6]                   \n\t"   // Load a10 RGBA pixel from table
+                "vld1.32        {d1[1]}, [r7]                   \n\t"   // Load a11 RGBA pixel from table
+                // Calculate pixel #1 and pre-load #2
+                "lsr            r8, %[fx], #12                  \n\t"   // Calculate subX = ((fx >> 12) & 0xF)
+                "and            r8, r8, #0xF                    \n\t"   //
+                "add            %[fx], %[fx], %[dx]             \n\t"   // Move fx to next position
+                "vdup.16        d28, r8                         \n\t"   // subX
+                "asr            r7, %[fx], #16                  \n\t"   // Calculate offset fx >> 16
+                "ldrh           r8, [%[row0], r7]               \n\t"   // Fetch row0 color table offsets
+                "ldrh           r7, [%[row1], r7]               \n\t"   // Fetch row1 color table offsets
+                "vmull.u8       q1, d0, d31                     \n\t"   // q0 = [a00|a01] * (16 - y)
+                "vmull.u8       q2, d1, d30                     \n\t"   // q1 = [a10|a11] * y
+                "and            r6, r8, #0xFF                   \n\t"   // Extract first offset
+                "lsr            r8, r8, #8                      \n\t"   // Extract second offset
+                "add            r6, %[table], r6, lsl #2        \n\t"   // Calculate a00 address for table
+                "add            r8, %[table], r8, lsl #2        \n\t"   // Calculate a01 address for table
+                "vld1.32        {d0[0]}, [r6]                   \n\t"   // Load a00 RGBA pixel from table
+                "vld1.32        {d0[1]}, [r8]                   \n\t"   // Load a01 RGBA pixel from table
+                "vmul.i16       d16, d3, d28                    \n\t"   // d16  = a01 * x
+                "vmla.i16       d16, d5, d28                    \n\t"   // d16 += a11 * x
+                "and            r6, r7, #0xFF                   \n\t"   // Extract first offset
+                "lsr            r7, r7, #8                      \n\t"   // Extract second offset
+                "add            r6, %[table], r6, lsl #2        \n\t"   // Calculate a10 address for table
+                "add            r7, %[table], r7, lsl #2        \n\t"   // Calculate a11 address for table
+                "vld1.32        {d1[0]}, [r6]                   \n\t"   // Load a10 RGBA pixel from table
+                "vld1.32        {d1[1]}, [r7]                   \n\t"   // Load a11 RGBA pixel from table
+                "vsub.i16       d27, d29, d28                   \n\t"   // 16 - subX
+                "vmla.i16       d16, d2, d27                    \n\t"   // d16 += a00 * (16 - x)
+                "vmla.i16       d16, d4, d27                    \n\t"   // d16 += a10 * (16 - x)
+                // Calculate pixel #2 and pre-load #3
+                "lsr            r8, %[fx], #12                  \n\t"   // Calculate subX = ((fx >> 12) & 0xF)
+                "and            r8, r8, #0xF                    \n\t"   //
+                "add            %[fx], %[fx], %[dx]             \n\t"   // Move fx to next position
+                "vdup.16        d28, r8                         \n\t"   // subX
+                "asr            r7, %[fx], #16                  \n\t"   // Calculate offset fx >> 16
+                "ldrh           r8, [%[row0], r7]               \n\t"   // Fetch row0 color table offsets
+                "ldrh           r7, [%[row1], r7]               \n\t"   // Fetch row1 color table offsets
+                "vmull.u8       q1, d0, d31                     \n\t"   // q0 = [a00|a01] * (16 - y)
+                "vmull.u8       q2, d1, d30                     \n\t"   // q1 = [a10|a11] * y
+                "and            r6, r8, #0xFF                   \n\t"   // Extract first offset
+                "lsr            r8, r8, #8                      \n\t"   // Extract second offset
+                "add            r6, %[table], r6, lsl #2        \n\t"   // Calculate a00 address for table
+                "add            r8, %[table], r8, lsl #2        \n\t"   // Calculate a01 address for table
+                "vld1.32        {d0[0]}, [r6]                   \n\t"   // Load a00 RGBA pixel from table
+                "vld1.32        {d0[1]}, [r8]                   \n\t"   // Load a01 RGBA pixel from table
+                "vmul.i16       d17, d3, d28                    \n\t"   // d17  = a01 * x
+                "vmla.i16       d17, d5, d28                    \n\t"   // d17 += a11 * x
+                "and            r6, r7, #0xFF                   \n\t"   // Extract first offset
+                "lsr            r7, r7, #8                      \n\t"   // Extract second offset
+                "add            r6, %[table], r6, lsl #2        \n\t"   // Calculate a10 address for table
+                "add            r7, %[table], r7, lsl #2        \n\t"   // Calculate a11 address for table
+                "vld1.32        {d1[0]}, [r6]                   \n\t"   // Load a10 RGBA pixel from table
+                "vld1.32        {d1[1]}, [r7]                   \n\t"   // Load a11 RGBA pixel from table
+                "vsub.i16       d27, d29, d28                   \n\t"   // 16 - subX
+                "vmla.i16       d17, d2, d27                    \n\t"   // d17 += a00 * (16 - x)
+                "vmla.i16       d17, d4, d27                    \n\t"   // d17 += a10 * (16 - x)
+                // Calculate pixel #3 and pre-load #4
+                "lsr            r8, %[fx], #12                  \n\t"   // Calculate subX = ((fx >> 12) & 0xF)
+                "and            r8, r8, #0xF                    \n\t"   //
+                "add            %[fx], %[fx], %[dx]             \n\t"   // Move fx to next position
+                "vdup.16        d28, r8                         \n\t"   // subX
+                "asr            r7, %[fx], #16                  \n\t"   // Calculate offset fx >> 16
+                "ldrh           r8, [%[row0], r7]               \n\t"   // Fetch row0 color table offsets
+                "ldrh           r7, [%[row1], r7]               \n\t"   // Fetch row1 color table offsets
+                "vmull.u8       q1, d0, d31                     \n\t"   // q0 = [a00|a01] * (16 - y)
+                "vmull.u8       q2, d1, d30                     \n\t"   // q1 = [a10|a11] * y
+                "and            r6, r8, #0xFF                   \n\t"   // Extract first offset
+                "lsr            r8, r8, #8                      \n\t"   // Extract second offset
+                "add            r6, %[table], r6, lsl #2        \n\t"   // Calculate a00 address for table
+                "add            r8, %[table], r8, lsl #2        \n\t"   // Calculate a01 address for table
+                "vld1.32        {d0[0]}, [r6]                   \n\t"   // Load a00 RGBA pixel from table
+                "vld1.32        {d0[1]}, [r8]                   \n\t"   // Load a01 RGBA pixel from table
+                "vmul.i16       d18, d3, d28                    \n\t"   // d18  = a01 * x
+                "vmla.i16       d18, d5, d28                    \n\t"   // d18 += a11 * x
+                "and            r6, r7, #0xFF                   \n\t"   // Extract first offset
+                "lsr            r7, r7, #8                      \n\t"   // Extract second offset
+                "add            r6, %[table], r6, lsl #2        \n\t"   // Calculate a10 address for table
+                "add            r7, %[table], r7, lsl #2        \n\t"   // Calculate a11 address for table
+                "vld1.32        {d1[0]}, [r6]                   \n\t"   // Load a10 RGBA pixel from table
+                "vld1.32        {d1[1]}, [r7]                   \n\t"   // Load a11 RGBA pixel from table
+                "vsub.i16       d27, d29, d28                   \n\t"   // 16 - subX
+                "vmla.i16       d18, d2, d27                    \n\t"   // d18 += a00 * (16 - x)
+                "vmla.i16       d18, d4, d27                    \n\t"   // d18 += a10 * (16 - x)
+                "vshrn.i16      d16, q8, #8                     \n\t"   // shift down result by 8
+                // Calculate pixel #4
+                "vmull.u8       q1, d0, d31                     \n\t"   // q0 = [a00|a01] * (16 - y)
+                "vmull.u8       q2, d1, d30                     \n\t"   // q1 = [a10|a11] * y
+                "lsr            r8, %[fx], #12                  \n\t"   // Calculate subX = ((fx >> 12) & 0xF)
+                "and            r8, r8, #0xF                    \n\t"   //
+                "add            %[fx], %[fx], %[dx]             \n\t"   // Move fx to next position
+                "vdup.16        d28, r8                         \n\t"   // subX
+                "vmul.i16       d19, d3, d28                    \n\t"   // d19  = a01 * x
+                "vmla.i16       d19, d5, d28                    \n\t"   // d19 += a11 * x
+                "vsub.i16       d27, d29, d28                   \n\t"   // 16 - subX
+                "vmla.i16       d19, d2, d27                    \n\t"   // d19 += a00 * (16 - x)
+                "vmla.i16       d19, d4, d27                    \n\t"   // d19 += a10 * (16 - x)
+                "vshrn.i16      d17, q9, #8                     \n\t"   // shift down result by 8
+                "vst1.32        {d16-d17}, [%[colors]]!         \n\t"   // Write result to memory
+                "bne            1b                              \n\t"
+                : [fx] "+r" (fx), [colors] "+r" (colors), [cnt] "+r" (asm_count)
+                : [row0] "r" (row0), [row1] "r" (row1), [subY] "r" (subY), [dx] "r" (dx), [table] "r" (table)
+                : "cc", "memory", "r6", "r7", "r8", "d0", "d1", "d2", "d3", "d4", "d5", "d16", "d17", "d18", "d19", "d27", "d28", "d29", "d30", "d31"
+                );
+        } else {
+            unsigned subX = ((fx >> 12) & 0xF);
+            unsigned x0 = SkClampMax(fx >> 16, maxX);
+            unsigned x1 = SkClampMax((fx + oneX) >> 16, maxX);
+
+            Filter_32_opaque(subX, subY,
+                        table[row0[x0]],
+                        table[row0[x1]],
+                        table[row1[x0]],
+                        table[row1[x1]],
+                        colors);
+            colors += 1;
+            fx += dx;
+            count--;
+        }
+    } while (count != 0);
+
+    s.fBitmap->getColorTable()->unlockColors(false);
 }
 
 
@@ -1021,8 +1037,6 @@ void S16_opaque_D32_nofilter_DX_arm(const SkBitmapProcState& s,
 /*  If we replace a sampleproc, then we null-out the associated shaderproc,
     otherwise the shader won't even look at the matrix/sampler
  */
-
-
 void SkBitmapProcState::platformProcs() {
     bool doFilter = fDoFilter;
     bool isOpaque = 256 == fAlphaScale;
@@ -1032,6 +1046,16 @@ void SkBitmapProcState::platformProcs() {
 
     switch (fBitmap->config()) {
         case SkBitmap::kIndex8_Config:
+#if defined(__ARM_HAVE_NEON) && defined(SK_CPU_LENDIAN)
+            if (SI8_opaque_D32_filter_DX == fSampleProc32) {
+                if (clamp_clamp) {
+                    fShaderProc32 = Clamp_SI8_opaque_D32_filter_DX_shaderproc_opt;
+                } else if ((SkShader::kRepeat_TileMode == fTileModeX) &&
+                           (SkShader::kRepeat_TileMode == fTileModeY)) {
+                    fShaderProc32 = Repeat_SI8_opaque_D32_filter_DX_shaderproc;
+                }
+            } else
+#endif
 #if SK_ARM_ARCH >= 6 && !defined(SK_CPU_BENDIAN)
             if (justDx && !doFilter) {
 #if 0   /* crashing on android device */
