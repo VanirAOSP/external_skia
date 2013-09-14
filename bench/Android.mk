@@ -81,6 +81,4 @@ LOCAL_MODULE := skia_bench
 
 LOCAL_MODULE_TAGS := optional
 
-LOCAL_CFLAGS := -fno-strict-aliasing
-
 include $(BUILD_EXECUTABLE)

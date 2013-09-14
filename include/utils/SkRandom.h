@@ -196,12 +196,9 @@ public:
      *  Returns value [0...1) as an IEEE float
      */
     float nextF() {
-        union {
-            unsigned int i;
-            float f;
-        } flt;
-        flt.i = 0x3f800000 | (this->nextU() >> 9);
-        return flt.f - 1.0f;
+        unsigned int floatint = 0x3f800000 | (this->nextU() >> 9);
+        float f = *(float*)(&floatint) - 1.0f;
+        return f;
     }
 
     /**

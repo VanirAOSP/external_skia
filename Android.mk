@@ -455,8 +455,6 @@ LOCAL_SRC_FILES += \
 	src/opts/SkUtils_opts_none.cpp
 endif
 
-# Workaround for http://gcc.gnu.org/bugzilla/show_bug.cgi?id=54781
-LOCAL_CFLAGS += $(call cc-ifversion, -eq, 48, -fno-tree-ter)
 
 # these are for emoji support, needed by webkit
 LOCAL_SRC_FILES += \
@@ -514,10 +512,6 @@ LOCAL_EXPORT_C_INCLUDES := \
 	$(LOCAL_PATH)/include/pipe \
 	$(LOCAL_PATH)/include/ports \
 	$(LOCAL_PATH)/include/utils
-
-# if all else fails...
-#LOCAL_CFLAGS += -fno-strict-aliasing
-#LOCAL_CFLAGS += -Wno-error=strict-aliasing
 
 LOCAL_LDLIBS += -lpthread
 
