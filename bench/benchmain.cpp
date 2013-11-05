@@ -945,7 +945,7 @@ int tool_main(int argc, char** argv) {
             {
                 SkString str;
                 str.printf("running bench [%d %d] %28s %4s %s = %6.2f : %s ", dim.fX, dim.fY,bench->getName(), \
-                configName,"ms",(timer.fWall / repeatDraw),"pass");
+                configName,"ms",(timer->fWall / repeatDraw),"pass");
                 logger.logProgress(str);
             }
         }
