@@ -303,6 +303,9 @@ LOCAL_SRC_FILES:= \
 	src/utils/SkBase64.cpp \
 	src/utils/SkBitmapTransformer.cpp \
 	src/utils/SkBitSet.cpp \
+	src/core/SkAltCanvas.cpp \
+	src/core/SkRecordingData.cpp \
+	src/core/SkAltRecordingData.cpp \
 	src/utils/SkBoundaryPatch.cpp \
 	src/utils/SkCamera.cpp \
 	src/utils/SkCubicInterval.cpp \
@@ -480,6 +483,11 @@ LOCAL_STATIC_LIBRARIES := \
 	libgif \
 	libwebp-decode \
 	libwebp-encode
+
+ifeq ($(WITH_QC_PERF),true)
+	LOCAL_WHOLE_STATIC_LIBRARIES += libqc-skia
+endif
+
 
 LOCAL_C_INCLUDES := \
 	$(LOCAL_PATH)/include/core \
