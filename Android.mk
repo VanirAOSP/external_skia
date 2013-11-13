@@ -554,6 +554,11 @@ LOCAL_STATIC_LIBRARIES := \
 	libwebp-decode \
 	libwebp-encode
 
+ifeq ($(WITH_QC_PERF),true)
+	LOCAL_WHOLE_STATIC_LIBRARIES += libqc-skia
+endif
+
+
 LOCAL_C_INCLUDES := \
 	$(LOCAL_PATH)/include/core \
 	$(LOCAL_PATH)/include/config \
