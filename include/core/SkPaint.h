@@ -18,7 +18,9 @@
 #ifdef SK_BUILD_FOR_ANDROID
 #include "SkPaintOptionsAndroid.h"
 
+#ifndef ARCH_ARM_NO_NEON
 #define SKPAINTOPTIONS_OPT
+#endif
 #ifdef SKPAINTOPTIONS_OPT
 //For testing this optimization ensure you rebuild and push libandroid_runtime.so and libhwui.so
 //everytime you build and push libskia.so
