@@ -164,9 +164,9 @@ SkFontConfigInterface* SkFontConfigInterface::GetSingletonDirectInterface() {
 
 void SkFontConfigInterface::ClearSingletonInterface() {
      SkAutoMutexAcquire ac(gMutex);
-     SkTypefaceCache::PurgeAll(true);
+     SkTypefaceCache::PurgeAll();
      if (NULL != gFontConfigInterface) {
-         SkSafeUnref(gFontConfigInterface);
+         delete gFontConfigInterface;
          gFontConfigInterface = NULL;
      }
 }
