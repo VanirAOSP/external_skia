@@ -331,6 +331,7 @@ static void S32A_D565_Opaque_Dither_neon(uint16_t * SK_RESTRICT dst,
 }
 
 #define	S32A_D565_Opaque_Dither_PROC S32A_D565_Opaque_Dither_neon
+#endif
 
 #if defined(__ARM_HAVE_NEON) && defined(SK_CPU_LENDIAN) && defined(ENABLE_OPTIMIZED_S32A_BLITTERS)
 
