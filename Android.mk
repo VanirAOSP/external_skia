@@ -65,6 +65,11 @@ LOCAL_CFLAGS += \
 	-DSKIA_IMPLEMENTATION=1 \
 	-Wno-clobbered
 
+# ===============
+# VANIR_FLAGS
+# ==============
+LOCAL_CFLAGS += $(VANIR_SKIA_FLAGS)
+
 LOCAL_CPPFLAGS := \
 	-std=c++11 \
 	-Wno-invalid-offsetof
