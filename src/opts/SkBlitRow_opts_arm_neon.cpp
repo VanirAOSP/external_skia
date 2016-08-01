@@ -714,9 +714,9 @@ void S32A_D565_Blend_neon(uint16_t* SK_RESTRICT dst,
         if (sc) {
             uint16_t dc = *dst;
             unsigned dst_scale = 255 - SkMulDiv255Round(SkGetPackedA32(sc), alpha);
-            unsigned dr = SkMulS16(SkPacked32ToR16(sc), alpha) + SkMulS16(SkGetPackedR16(dc), dst_scale);
-            unsigned dg = SkMulS16(SkPacked32ToG16(sc), alpha) + SkMulS16(SkGetPackedG16(dc), dst_scale);
-            unsigned db = SkMulS16(SkPacked32ToB16(sc), alpha) + SkMulS16(SkGetPackedB16(dc), dst_scale);
+            unsigned dr = (SkPacked32ToR16(sc) * alpha) + (SkGetPackedR16(dc) * dst_scale);
+            unsigned dg = (SkPacked32ToG16(sc) * alpha) + (SkGetPackedG16(dc) * dst_scale);
+            unsigned db = (SkPacked32ToB16(sc) * alpha) + (SkGetPackedB16(dc) * dst_scale);
             *dst = SkPackRGB16(SkDiv255Round(dr), SkDiv255Round(dg), SkDiv255Round(db));
         }
         dst += 1;
@@ -1582,3 +1582,20 @@ const SkBlitRow::Proc32 sk_blitrow_platform_32_procs_arm_neon[] = {
     NULL
 #endif
 };
+
+#include "Sk4px.h"
+
+void sk_blitrow_color32_arm_neon(SkPMColor* dst, const SkPMColor* src, int count, SkPMColor color) {
+    // Until it becomes a little more reasonable to assume we'll be built with NEON,
+    // we copy our Sk4px implementation of SkBlitRow::Color32 here so it picks up NEON at runtime.
+    unsigned invA = 255 - SkGetPackedA32(color);
+    invA += invA >> 7;
+    SkASSERT(invA < 256);  // Our caller has already handled the alpha == 0 case.
+
+    Sk16h colorHighAndRound = Sk4px::DupPMColor(color).widenHi() + Sk16h(128);
+    Sk16b invA_16x(invA);
+
+    Sk4px::MapSrc(count, dst, src, [&](const Sk4px& src4) -> Sk4px {
+        return (src4 * invA_16x).addNarrowHi(colorHighAndRound);
+    });
+}

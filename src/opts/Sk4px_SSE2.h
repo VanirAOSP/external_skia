@@ -5,7 +5,9 @@
  * found in the LICENSE file.
  */
 
-inline Sk4px::Sk4px(SkPMColor px) : INHERITED(_mm_set1_epi32(px)) {}
+namespace { // See Sk4px.h
+
+inline Sk4px Sk4px::DupPMColor(SkPMColor px) { return Sk16b(_mm_set1_epi32(px)); }
 
 inline Sk4px Sk4px::Load4(const SkPMColor px[4]) {
     return Sk16b(_mm_loadu_si128((const __m128i*)px));
@@ -29,6 +31,11 @@ inline Sk4px::Wide Sk4px::widenHi() const {
                  _mm_unpackhi_epi8(_mm_setzero_si128(), this->fVec));
 }
 
+inline Sk4px::Wide Sk4px::widenLoHi() const {
+    return Sk16h(_mm_unpacklo_epi8(this->fVec, this->fVec),
+                 _mm_unpackhi_epi8(this->fVec, this->fVec));
+}
+
 inline Sk4px::Wide Sk4px::mulWiden(const Sk16b& other) const {
     return this->widenLo() * Sk4px(other).widenLo();
 }
@@ -36,6 +43,15 @@ inline Sk4px::Wide Sk4px::mulWiden(const Sk16b& other) const {
 inline Sk4px Sk4px::Wide::addNarrowHi(const Sk16h& other) const {
     Sk4px::Wide r = (*this + other) >> 8;
     return Sk4px(_mm_packus_epi16(r.fLo.fVec, r.fHi.fVec));
+}
+
+inline Sk4px Sk4px::Wide::div255() const {
+    // (x + 127) / 255 == ((x+128) * 257)>>16,
+    // and _mm_mulhi_epu16 makes the (_ * 257)>>16 part very convenient.
+    const __m128i _128 = _mm_set1_epi16(128),
+                  _257 = _mm_set1_epi16(257);
+    return Sk4px(_mm_packus_epi16(_mm_mulhi_epu16(_mm_add_epi16(fLo.fVec, _128), _257),
+                                  _mm_mulhi_epu16(_mm_add_epi16(fHi.fVec, _128), _257)));
 }
 
 // Load4Alphas and Load2Alphas use possibly-unaligned loads (SkAlpha[] -> uint16_t or uint32_t).
@@ -85,3 +101,5 @@ inline Sk4px Sk4px::zeroAlphas() const {
     // andnot(a,b) == ~a & b
     return Sk16b(_mm_andnot_si128(_mm_set1_epi32(0xFF << SK_A32_SHIFT), this->fVec));
 }
+
+}  // namespace

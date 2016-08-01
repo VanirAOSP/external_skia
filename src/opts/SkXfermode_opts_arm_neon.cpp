@@ -1,3 +1,5 @@
+// Copyright 2013 unknown
+
 #include "SkXfermode.h"
 #include "SkXfermode_proccoeff.h"
 #include "SkColorPriv.h"
@@ -5,6 +7,7 @@
 #include <arm_neon.h>
 #include "SkColor_opts_neon.h"
 #include "SkXfermode_opts_arm_neon.h"
+#include "Sk4pxXfermode.h"
 
 #define SkAlphaMulAlpha(a, b)   SkMulDiv255Round(a, b)
 
@@ -1010,11 +1013,12 @@ SK_COMPILE_ASSERT(
 
 SkProcCoeffXfermode* SkPlatformXfermodeFactory_impl_neon(const ProcCoeff& rec,
                                                          SkXfermode::Mode mode) {
-
-    void* procSIMD = reinterpret_cast<void*>(gNEONXfermodeProcs[mode]);
-
-    if (procSIMD != NULL) {
-        return SkNEW_ARGS(SkNEONProcCoeffXfermode, (rec, mode, procSIMD));
+    if (auto xfermode = SkCreate4pxXfermode(rec, mode)) {
+        return xfermode;
+    }
+    // TODO: Sk4pxXfermode now covers every mode found in this file.  Delete them all!
+    if (auto proc = gNEONXfermodeProcs[mode]) {
+        return SkNEW_ARGS(SkNEONProcCoeffXfermode, (rec, mode, (void*)proc));
     }
     return NULL;
 }

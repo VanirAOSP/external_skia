@@ -7,10 +7,14 @@
 
 #include "SkUtils.h"
 
+namespace { // See Sk4px.h
+
 static_assert(sizeof(Sk4px) == 16, "This file uses memcpy / sk_memset32, so exact size matters.");
 
-inline Sk4px::Sk4px(SkPMColor px) {
-    sk_memset32((uint32_t*)this, px, 4);
+inline Sk4px Sk4px::DupPMColor(SkPMColor px) {
+    Sk4px px4 = Sk16b();
+    sk_memset32((uint32_t*)&px4, px, 4);
+    return px4;
 }
 
 inline Sk4px Sk4px::Load4(const SkPMColor px[4]) {
@@ -44,6 +48,8 @@ inline Sk4px::Wide Sk4px::widenLo() const {
 
 inline Sk4px::Wide Sk4px::widenHi() const { return this->widenLo() << 8; }
 
+inline Sk4px::Wide Sk4px::widenLoHi() const { return this->widenLo() + this->widenHi(); }
+
 inline Sk4px::Wide Sk4px::mulWiden(const Sk16b& other) const {
     return this->widenLo() * Sk4px(other).widenLo();
 }
@@ -54,6 +60,12 @@ inline Sk4px Sk4px::Wide::addNarrowHi(const Sk16h& other) const {
                  r.kth< 4>(), r.kth< 5>(), r.kth< 6>(), r.kth< 7>(),
                  r.kth< 8>(), r.kth< 9>(), r.kth<10>(), r.kth<11>(),
                  r.kth<12>(), r.kth<13>(), r.kth<14>(), r.kth<15>());
+}
+
+inline Sk4px Sk4px::Wide::div255() const {
+    // Calculated as ((x+128) + ((x+128)>>8)) >> 8.
+    auto v = *this + Sk16h(128);
+    return v.addNarrowHi(v>>8);
 }
 
 inline Sk4px Sk4px::alphas() const {
@@ -94,3 +106,4 @@ inline Sk4px Sk4px::zeroColors() const {
                  0,0,0, this->kth<15>());
 }
 
+}  // namespace
